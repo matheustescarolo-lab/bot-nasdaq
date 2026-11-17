@@ -1,0 +1,81 @@
+name: Bot Nasdaq (demo)
+
+# Lo lanza cron-job.org dos veces por día de bolsa (hora de Nueva York): 9:45 (tramo de la mañana) y 12:40 (tramo de la tarde).
+# El bot decide solo qué tramo le toca según la hora. Si los dos coinciden, el de la tarde espera a que termine el de la mañana.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: bot-nasdaq
+  cancel-in-progress: false
+
+jobs:
+  operar:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Instalar librerias
+        run: python -m pip install --disable-pip-version-check -q MetaTrader5 pandas numpy tzdata
+
+      - name: Instalar MetaTrader 5 de Tickmill
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $inst = Join-Path $env:RUNNER_TEMP 'mt5setup.exe'
+          Invoke-WebRequest -Uri 'https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe' -OutFile $inst
+          Start-Process -FilePath $inst -ArgumentList '/auto'
+          $t0 = Get-Date; $exe = $null
+          while (-not $exe -and ((Get-Date) - $t0).TotalMinutes -lt 8) {
+            Start-Sleep -Seconds 10
+            $exe = Get-ChildItem 'C:\Program Files', 'C:\Program Files (x86)' -Filter terminal64.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $exe) { throw 'No se instalo MetaTrader 5' }
+          Start-Sleep -Seconds 30
+          Get-Process -Name terminal64, mt5setup -ErrorAction SilentlyContinue | Stop-Process -Force
+          Write-Host "MetaTrader 5 instalado en $($exe.FullName)"
+          "MT5_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
+
+      - name: Abrir MetaTrader con la cuenta y Algo Trading activado
+        shell: pwsh
+        env:
+          MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
+          MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
+          MT5_SERVER: ${{ secrets.MT5_SERVER }}
+        run: |
+          $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
+          $txt = "[Common]`r`nLogin=$env:MT5_LOGIN`r`nPassword=$env:MT5_PASSWORD`r`nServer=$env:MT5_SERVER`r`n" +
+                 "[Experts]`r`nAllowLiveTrading=1`r`nAllowDllImport=0`r`nEnabled=1`r`nAccount=0`r`nProfile=0`r`n"
+          [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
+          Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
+          Start-Sleep -Seconds 60
+          Remove-Item $ini -Force
+
+      - name: Correr el bot (un tramo del dia)
+        env:
+          MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
+          MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
+          MT5_SERVER: ${{ secrets.MT5_SERVER }}
+          GH_TOKEN: ${{ github.token }}
+          PYTHONIOENCODING: utf-8
+        run: python bot_nasdaq.py
+
+      - name: Guardar la bitacora en el repositorio
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          if [ -f bitacora_nasdaq.csv ]; then git add bitacora_nasdaq.csv; fi
+          git diff --cached --quiet || (git commit -m "Bitacora Nasdaq $(date -u +%Y-%m-%d)" && git pull -q --rebase && git push)

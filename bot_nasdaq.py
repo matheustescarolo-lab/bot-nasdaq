@@ -1,0 +1,318 @@
+"""
+BOT NASDAQ (demo) — opera en MT5 de Tickmill el CFD del Nasdaq-100 (USTEC) con las dos estrategias de la prueba MNQ:
+rango de 30 min (ORB30) y zona de ruido. Tamaño: lo equivalente a 1 MNQ por estrategia (US$2 por punto = 2 lotes de USTEC).
+Corre en GitHub Actions en dos tramos al día (los lanza cron-job.org):
+  - mañana: de ~9:45 a 12:50 de Nueva York   - tarde: de ~12:45 a 15:58 de Nueva York (cierra todo a las 15:55)
+Cada tramo vuelve a calcular lo que diría el modelo con las velas de hoy y deja la cuenta igual que el modelo, así que
+si un tramo arranca tarde o se cae, el siguiente se pone al día solo.
+Solo opera en cuentas DEMO. Bitácora: bitacora_nasdaq.csv. Al final del día publica el resumen en el issue
+«📊 Update diario del bot Nasdaq» (GitHub te avisa por correo).
+Conexión: variables MT5_LOGIN, MT5_PASSWORD, MT5_SERVER y MT5_PATH.
+"""
+import os, sys, csv, json, time, datetime as dt, urllib.request
+from zoneinfo import ZoneInfo
+import pandas as pd
+import MetaTrader5 as mt5
+from estrategias import niveles_orb, modelo_orb, modelo_ruido, LOOK, VELAS_DIA_MIN, T
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
+SIMBOLOS = ['USTEC', 'NAS100', 'US100', 'USTECH', 'NDX100']
+DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
+MAGIC = {'orb': 301, 'ruido': 302}
+NOMBRE = {'orb': 'Rango 30 min', 'ruido': 'Zona de ruido'}
+STOP_EMERGENCIA = 0.025          # zona de ruido: stop en el servidor a 2.5% en contra (por si el bot se cae con la posición abierta)
+CIERRE = T('15:55')
+FIN_MANANA = T('12:50')
+FERIADOS = {'2026-11-26', '2026-12-25', '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
+            '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24'}
+MEDIO_DIA = {'2026-11-27', '2026-12-24', '2027-11-26'}        # la bolsa cierra a las 13:00: el bot cierra todo a las 12:55
+FILL = [mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN]
+DESFASE = None                   # segundos que hay que restar a la hora del servidor para tener la de Nueva York
+
+
+def ahora_ny():
+    return dt.datetime.now(NY).replace(tzinfo=None)
+
+
+def log(evento, estrategia='', lado='', lotes='', precio='', detalle=''):
+    f = os.path.join(HERE, 'bitacora_nasdaq.csv'); nuevo = not os.path.exists(f)
+    fila = [dt.datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S'), evento, estrategia, lado, lotes, precio, detalle]
+    with open(f, 'a', newline='', encoding='utf-8') as fh:
+        w = csv.writer(fh)
+        if nuevo:
+            w.writerow(['hora_UTC', 'evento', 'estrategia', 'lado', 'lotes', 'precio', 'detalle'])
+        w.writerow(fila)
+    print(' | '.join(str(x) for x in fila if x != ''), flush=True)
+
+
+# ===== MT5 =====
+def iniciar():
+    login, ruta = os.environ.get('MT5_LOGIN', '').strip(), os.environ.get('MT5_PATH', '').strip()
+    kw = dict(login=int(login), password=os.environ.get('MT5_PASSWORD', ''), server=os.environ.get('MT5_SERVER', '').strip(),
+              timeout=180000) if login else {}
+    return mt5.initialize(ruta, **kw) if ruta else mt5.initialize(**kw)
+
+
+def conectado():
+    if mt5.account_info() is not None:
+        return True
+    for _ in range(3):
+        mt5.shutdown(); time.sleep(3)
+        if iniciar() and mt5.account_info() is not None:
+            log('reconexion', detalle='MT5 se había desconectado; reconectado')
+            return True
+    return False
+
+
+def buscar_simbolo():
+    for n in SIMBOLOS:
+        if mt5.symbol_info(n) is not None and mt5.symbol_select(n, True):
+            return n
+    return None
+
+
+def calcular_desfase(sym):
+    """La hora del servidor de Tickmill va 7 h adelante de Nueva York todo el año; se comprueba con el último precio."""
+    global DESFASE
+    t = mt5.symbol_info_tick(sym)
+    srv_menos_utc = round((t.time - time.time()) / 1800) * 1800 if t and t.time else None
+    ny_menos_utc = int(dt.datetime.now(NY).utcoffset().total_seconds())
+    DESFASE = 7 * 3600
+    if srv_menos_utc is not None and srv_menos_utc - ny_menos_utc != DESFASE:
+        DESFASE = srv_menos_utc - ny_menos_utc
+        log('aviso', detalle=f'el servidor no va 7 h adelante de Nueva York: uso {DESFASE / 3600:+.1f} h')
+
+
+def a_ny(t_servidor):
+    return dt.datetime(1970, 1, 1) + dt.timedelta(seconds=int(t_servidor) - DESFASE)
+
+
+def velas(sym):
+    r = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M5, 0, 9000)
+    if r is None or len(r) == 0:
+        return None
+    df = pd.DataFrame(r)
+    df.index = [a_ny(x) for x in df['time']]
+    df = df.rename(columns={'open': 'o', 'high': 'h', 'low': 'l', 'close': 'c', 'tick_volume': 'v'})[['o', 'h', 'l', 'c', 'v']]
+    return df[(df.index.time >= T('09:30')) & (df.index.time < T('16:00'))]
+
+
+def partir_dias(df, hoy):
+    dias = {d: g for d, g in df.groupby(df.index.date)}
+    previos = [g for d, g in sorted(dias.items()) if d < hoy and str(d) not in FERIADOS and len(g) >= VELAS_DIA_MIN]
+    return dias.get(hoy, df.iloc[0:0]), previos
+
+
+def lotes_por_mnq(info):
+    usd_por_punto_lote = info.trade_tick_value / info.trade_tick_size if info.trade_tick_size else 1.0
+    paso = info.volume_step or 0.01
+    return max(info.volume_min, round(round(DOLARES_POR_PUNTO / usd_por_punto_lote / paso) * paso, 8))
+
+
+def posicion(sym, clave):
+    ps = [p for p in (mt5.positions_get(symbol=sym) or []) if p.magic == MAGIC[clave]]
+    lado = 0 if not ps else (1 if ps[0].type == mt5.POSITION_TYPE_BUY else -1)
+    return lado, ps
+
+
+def opero_hoy(clave, hoy):
+    """¿Ya hubo alguna entrada de esta estrategia hoy? (para no volver a entrar en el rango de 30 min después de un stop)."""
+    desde = dt.datetime.now(UTC) - dt.timedelta(days=2)
+    ds = mt5.history_deals_get(desde, dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
+    return any(d.magic == MAGIC[clave] and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds)
+
+
+def salio_por_stop(clave, desde_ny):
+    """¿El servidor cerró esta estrategia por stop después del último chequeo?"""
+    if desde_ny is None:
+        return False
+    ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
+    return any(d.magic == MAGIC[clave] and d.entry == mt5.DEAL_ENTRY_OUT and d.reason == mt5.DEAL_REASON_SL
+               and a_ny(d.time) >= desde_ny for d in ds)
+
+
+def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
+    t, info = mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
+    if t is None or info is None or t.bid <= 0:
+        log('error', NOMBRE[clave], detalle=f'sin precio ({mt5.last_error()})'); return None
+    precio = t.ask if lado > 0 else t.bid
+    req = dict(action=mt5.TRADE_ACTION_DEAL, symbol=sym, volume=float(lotes), price=precio, magic=MAGIC[clave],
+               type=mt5.ORDER_TYPE_BUY if lado > 0 else mt5.ORDER_TYPE_SELL, deviation=max(20, int(precio * 0.001 / info.point)),
+               comment=clave, type_time=mt5.ORDER_TIME_GTC)
+    if ticket is not None:
+        req['position'] = ticket
+    elif sl is not None:
+        minimo = (info.trade_stops_level or 0) * info.point
+        if (lado > 0 and sl < precio - minimo) or (lado < 0 and sl > precio + minimo):
+            req['sl'] = round(sl, info.digits)
+    r = None
+    for f in FILL:
+        r = mt5.order_send({**req, 'type_filling': f})
+        if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
+            return r.price or precio
+        if r is None or r.retcode != 10030:
+            break
+    log('error', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes,
+        detalle=f"orden rechazada: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
+    return None
+
+
+def cerrar(sym, clave, motivo):
+    _, ps = posicion(sym, clave)
+    for p in ps:
+        lado = -1 if p.type == mt5.POSITION_TYPE_BUY else 1
+        px = enviar(sym, lado, p.volume, clave, ticket=p.ticket)
+        if px is not None:
+            res = (px - p.price_open) * (-lado) * p.volume * (mt5.symbol_info(sym).trade_tick_value / mt5.symbol_info(sym).trade_tick_size)
+            log('salida', NOMBRE[clave], 'venta' if lado < 0 else 'compra', p.volume, f'{px:.2f}',
+                f'{motivo} · entró a {p.price_open:.2f} · resultado aprox. {res:+,.2f} USD')
+
+
+def abrir(sym, clave, lado, lotes, sl, motivo):
+    px = enviar(sym, lado, lotes, clave, sl=sl)
+    if px is not None:
+        log('entrada', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{px:.2f}',
+            motivo + (f' · stop {sl:,.2f}' if sl else ''))
+
+
+# ===== Lógica del día =====
+def sincronizar(sym, df, hoy, ahora, lotes):
+    hoy_df, previos = partir_dias(df, hoy)
+    if len(hoy_df) == 0 or hoy_df.index[0].time() > T('09:35'):
+        return
+    # --- Rango de 30 min ---
+    niv = niveles_orb(hoy_df)
+    if niv and ahora.time() >= T('10:00'):
+        hi, lo = niv
+        lado_m, est = modelo_orb(hoy_df, hi, lo)
+        lado_r, _ = posicion(sym, 'orb')
+        if est == 'activo' and lado_r == 0 and not opero_hoy('orb', hoy):
+            abrir(sym, 'orb', lado_m, lotes, lo if lado_m > 0 else hi,
+                  f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f})')
+        elif lado_r != 0 and (est == 'stop' or lado_m != lado_r):
+            cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
+    # --- Zona de ruido ---
+    cierre_ayer = float(previos[-1].c.iloc[-1]) if previos else None
+    pos_m, info, ultimo = modelo_ruido(hoy_df, previos, cierre_ayer, ahora)
+    if pos_m is None:
+        return
+    lado_r, _ = posicion(sym, 'ruido')
+    if lado_r == 0 and pos_m != 0 and salio_por_stop('ruido', ultimo):
+        return                                   # el stop de emergencia la sacó: espera al siguiente chequeo
+    if pos_m != lado_r:
+        if lado_r != 0:
+            cerrar(sym, 'ruido', 'salió de la zona · ' + info)
+        if pos_m != 0:
+            precio = mt5.symbol_info_tick(sym).ask if pos_m > 0 else mt5.symbol_info_tick(sym).bid
+            abrir(sym, 'ruido', pos_m, lotes, precio * (1 - STOP_EMERGENCIA * pos_m), 'cerró fuera de la zona de ruido · ' + info)
+
+
+def cerrar_viejas(sym, hoy):
+    for clave in MAGIC:
+        _, ps = posicion(sym, clave)
+        if any(a_ny(p.time).date() < hoy for p in ps):
+            cerrar(sym, clave, 'quedó abierta de un día anterior')
+
+
+def resumen(sym, hoy):
+    acc = mt5.account_info()
+    ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
+    L = [f"📊 Update del bot Nasdaq — {hoy:%d-%m-%Y}", f'💰 Cuenta demo: ${acc.equity:,.2f}']
+    total = 0.0
+    for clave in MAGIC:
+        mios = [d for d in ds if d.magic == MAGIC[clave] and a_ny(d.time).date() == hoy]
+        pnl = sum(d.profit + d.commission + d.swap + getattr(d, 'fee', 0.0) for d in mios)
+        n = sum(1 for d in mios if d.entry == mt5.DEAL_ENTRY_IN)
+        total += pnl
+        L.append(f"• {NOMBRE[clave]}: {'sin operaciones' if n == 0 else f'{n} operación(es) · {pnl:+,.2f} USD'}")
+    L.append(f'🧮 Total del día: {total:+,.2f} USD (1 MNQ por estrategia)')
+    errores = 0
+    try:
+        with open(os.path.join(HERE, 'bitacora_nasdaq.csv'), encoding='utf-8') as fh:
+            errores = sum(1 for f in csv.DictReader(fh) if f['evento'] == 'error' and f['hora_UTC'][:10] >= f'{hoy:%Y-%m-%d}')
+    except Exception:
+        pass
+    L.append(f'⚠️ {errores} error(es) hoy: revisa bitacora_nasdaq.csv' if errores else '✅ Sin errores')
+    texto = '\n'.join(L)
+    log('resumen', detalle=texto.replace('\n', ' | '))
+    publicar(texto)
+
+
+def publicar(texto):
+    token, repo = os.environ.get('GH_TOKEN', ''), os.environ.get('GITHUB_REPOSITORY', '')
+    if not (token and repo):
+        return
+    titulo = '📊 Update diario del bot Nasdaq'
+    def gh(metodo, ruta, datos=None):
+        req = urllib.request.Request(f'https://api.github.com/repos/{repo}{ruta}', method=metodo,
+                                     data=json.dumps(datos).encode() if datos is not None else None,
+                                     headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json',
+                                              'User-Agent': 'bot-nasdaq', 'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            t = r.read()
+        return json.loads(t) if t else None
+    try:
+        issues = gh('GET', '/issues?state=open&per_page=100') or []
+        n = next((i['number'] for i in issues if i.get('title') == titulo and 'pull_request' not in i), None)
+        if n is None:
+            n = gh('POST', '/issues', {'title': titulo, 'body': 'Aquí el bot deja su resumen al final de cada día de bolsa.'})['number']
+        dueno = os.environ.get('GITHUB_REPOSITORY_OWNER', '')
+        gh('POST', f'/issues/{n}/comments', {'body': (f'@{dueno}\n\n' if dueno else '') + texto})
+        print(f'Resumen publicado en el issue #{n}.')
+    except Exception as e:
+        print(f'::warning::No pude publicar el resumen: {e!r}'[:300])
+
+
+def main():
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+    ahora = ahora_ny(); hoy = ahora.date()
+    if hoy.weekday() >= 5 or str(hoy) in FERIADOS:
+        print(f'{hoy}: no hay bolsa en Nueva York. No hago nada.'); return
+    cierre = T('12:55') if str(hoy) in MEDIO_DIA else CIERRE
+    hasta = FIN_MANANA if ahora.time() < T('12:30') else (dt.datetime.combine(hoy, cierre) + dt.timedelta(minutes=3)).time()
+    tramo = 'mañana' if hasta == FIN_MANANA else 'tarde'
+    if not iniciar() or mt5.account_info() is None:
+        log('error', detalle=f'no pude conectar con MT5 ({mt5.last_error()})'); sys.exit(1)
+    acc = mt5.account_info()
+    if acc.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO:
+        log('error', detalle=f'la cuenta {acc.login} NO es demo: este bot solo opera en demo'); sys.exit(1)
+    sym = buscar_simbolo()
+    if sym is None:
+        log('error', detalle='no encontré el Nasdaq-100 (USTEC) en MT5'); sys.exit(1)
+    calcular_desfase(sym)
+    lotes = lotes_por_mnq(mt5.symbol_info(sym))
+    log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈1 MNQ) · equity {acc.equity:,.2f} · '
+                          f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
+    cerrar_viejas(sym, hoy)
+    errores = 0
+    while True:
+        ahora = ahora_ny()
+        if ahora.time() >= cierre:
+            for clave in MAGIC:
+                cerrar(sym, clave, f'cierre del día ({cierre:%H:%M} NY)')
+            resumen(sym, hoy)
+            break
+        if ahora.time() >= hasta:
+            log('fin', detalle=f'termina el tramo de la {tramo}; el de la tarde sigue con las posiciones abiertas')
+            break
+        try:
+            if not conectado():
+                raise RuntimeError(f'sin conexión con MT5 ({mt5.last_error()})')
+            df = velas(sym)
+            if df is not None:
+                sincronizar(sym, df, hoy, ahora, lotes)
+            errores = 0
+        except Exception as e:
+            errores += 1
+            if errores in (1, 10, 50):
+                log('error', detalle=f'{type(e).__name__}: {e}'[:200])
+        time.sleep(10)
+    mt5.shutdown()
+
+
+if __name__ == '__main__':
+    main()
