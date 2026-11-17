@@ -4,3 +4,10 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-17 16:00:04,entrada,Zona de ruido,venta,2.0,26832.46,"cerró fuera de la zona de ruido · chequeo 11:00 NY: cierre 26,836.86 · zona 26,931.47–27,517.17 · VWAP 27,027.83 · stop 27,504.44"
 2026-11-17 17:30:02,salida,Zona de ruido,compra,2.0,26952.37,"salió de la zona · chequeo 12:30 NY: cierre 26,961.73 · zona 26,905.43–27,543.25 · VWAP 26,943.60 · entró a 26832.46 · resultado aprox. -239.82 USD"
 2026-11-17 17:50:04,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
+2026-11-17 17:52:43,inicio,,,,,"tramo de la tarde · USTEC · 2 lotes por estrategia (≈1 MNQ) · equity 50,226.92 · cuenta demo · trabaja hasta las 15:58 NY"
+2026-11-17 18:00:05,entrada,Zona de ruido,venta,2.0,26854.33,"cerró fuera de la zona de ruido · chequeo 13:00 NY: cierre 26,880.34 · zona 26,890.56–27,558.15 · VWAP 26,937.23 · stop 27,525.49"
+2026-11-17 18:30:07,salida,Zona de ruido,compra,2.0,26975.05,"salió de la zona · chequeo 13:30 NY: cierre 26,987.82 · zona 26,875.91–27,572.82 · VWAP 26,932.72 · entró a 26854.33 · resultado aprox. -241.44 USD"
+2026-11-17 19:00:00,entrada,Zona de ruido,venta,2.0,26871.39,"cerró fuera de la zona de ruido · chequeo 14:00 NY: cierre 26,877.70 · zona 26,889.19–27,559.52 · VWAP 26,929.56 · stop 27,543.69"
+2026-11-17 20:55:01,salida,Rango 30 min,compra,2.0,26885.69,cierre del día (15:55 NY) · entró a 27117.96 · resultado aprox. +464.54 USD
+2026-11-17 20:55:01,salida,Zona de ruido,compra,2.0,26885.32,cierre del día (15:55 NY) · entró a 26871.39 · resultado aprox. -27.86 USD
+2026-11-17 20:55:01,resumen,,,,,"📊 Update del bot Nasdaq — 17-11-2026 | 💰 Cuenta demo: $49,955.42 | • Rango 30 min: 1 operación(es) · +464.54 USD | • Zona de ruido: 3 operación(es) · -509.12 USD | 🧮 Total del día: -44.58 USD (1 MNQ por estrategia) | ✅ Sin errores"
