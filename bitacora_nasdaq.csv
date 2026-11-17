@@ -1,0 +1,6 @@
+hora_UTC,evento,estrategia,lado,lotes,precio,detalle
+2026-11-17 14:47:27,inicio,,,,,"tramo de la mañana · USTEC · 2 lotes por estrategia (≈1 MNQ) · equity 50,000.00 · cuenta demo · trabaja hasta las 12:50 NY"
+2026-11-17 15:06:00,entrada,Rango 30 min,venta,2.0,27117.96,"rompió el rango de 30 min (27,108.83–27,261.39) · stop 27,261.39"
+2026-11-17 16:00:04,entrada,Zona de ruido,venta,2.0,26832.46,"cerró fuera de la zona de ruido · chequeo 11:00 NY: cierre 26,836.86 · zona 26,931.47–27,517.17 · VWAP 27,027.83 · stop 27,504.44"
+2026-11-17 17:30:02,salida,Zona de ruido,compra,2.0,26952.37,"salió de la zona · chequeo 12:30 NY: cierre 26,961.73 · zona 26,905.43–27,543.25 · VWAP 26,943.60 · entró a 26832.46 · resultado aprox. -239.82 USD"
+2026-11-17 17:50:04,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
