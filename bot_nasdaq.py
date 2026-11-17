@@ -13,7 +13,7 @@ import os, sys, csv, json, time, datetime as dt, urllib.request
 from zoneinfo import ZoneInfo
 import pandas as pd
 import MetaTrader5 as mt5
-from estrategias import niveles_orb, modelo_orb, modelo_ruido, LOOK, VELAS_DIA_MIN, T
+from estrategias import niveles_orb, modelo_orb, modelo_ruido, piso_usd, LOOK, VELAS_DIA_MIN, T
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
@@ -208,6 +208,42 @@ def sincronizar(sym, df, hoy, ahora, lotes):
             abrir(sym, 'ruido', pos_m, lotes, precio * (1 - STOP_EMERGENCIA * pos_m), 'cerró fuera de la zona de ruido · ' + info)
 
 
+def proteger(sym, df):
+    """Break even (rango 30 min) y escalera (zona de ruido): sube el stop en el servidor, nunca lo baja."""
+    info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
+    if info is None or t is None:
+        return
+    usd_pt = DOLARES_POR_PUNTO
+    for clave in MAGIC:
+        _, ps = posicion(sym, clave)
+        for p in ps:
+            lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
+            desde = a_ny(p.time).replace(second=0, microsecond=0)
+            desde = desde - dt.timedelta(minutes=desde.minute % 5)
+            velas_pos = df[df.index >= desde]
+            mejor = max([t.bid] + list(velas_pos.h)) if lado > 0 else min([t.ask] + list(velas_pos.l))
+            maxima = (mejor - p.price_open) * lado * usd_pt
+            piso = piso_usd(clave, maxima)
+            if piso is None:
+                continue
+            nuevo = round(p.price_open + lado * piso / usd_pt, info.digits)
+            if p.sl and ((lado > 0 and nuevo <= p.sl + info.point) or (lado < 0 and nuevo >= p.sl - info.point)):
+                continue                                    # el stop ya está igual o mejor
+            actual = t.bid if lado > 0 else t.ask
+            minimo = (info.trade_stops_level or 0) * info.point
+            if (lado > 0 and actual - nuevo <= minimo) or (lado < 0 and nuevo - actual <= minimo):
+                cerrar(sym, clave, f'el precio ya está en el piso asegurado (+{piso:,.0f} USD)')
+                continue
+            r = mt5.order_send(dict(action=mt5.TRADE_ACTION_SLTP, symbol=sym, position=p.ticket, sl=nuevo, tp=p.tp or 0.0,
+                                    magic=MAGIC[clave]))
+            if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
+                que = 'break even' if clave == 'orb' else f'escalera: asegura +{piso:,.0f} USD'
+                log('protege', NOMBRE[clave], 'compra' if lado > 0 else 'venta', p.volume, f'{nuevo:.2f}',
+                    f'{que} · llegó a ir +{maxima:,.0f} USD · stop de {p.sl:.2f} a {nuevo:.2f}')
+            else:
+                log('error', NOMBRE[clave], detalle=f"no pude mover el stop: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
+
+
 def cerrar_viejas(sym, hoy):
     for clave in MAGIC:
         _, ps = posicion(sym, clave)
@@ -338,6 +374,7 @@ def main():
             df = velas(sym)
             if df is not None:
                 sincronizar(sym, df, hoy, ahora, lotes)
+                proteger(sym, df)
             errores = 0
         except Exception as e:
             errores += 1

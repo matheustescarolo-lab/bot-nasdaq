@@ -90,3 +90,18 @@ def modelo_ruido(hoy, previos, cierre_ayer, ahora_ny):
         info = f'chequeo {fin} NY: cierre {c:,.2f} · zona {lb:,.2f}–{ub:,.2f} · VWAP {vw[i]:,.2f}'
         ultimo = hoy.index[i] + dt.timedelta(minutes=5)
     return pos, info, ultimo
+
+
+# ===== Protección de ganancias (probado el 17-nov con 352 días de USTEC) =====
+BREAK_EVEN_ORB = 150      # rango 30 min: al ir ganando US$150, el stop pasa al precio de entrada
+ESCALERA_DESDE = 200      # zona de ruido: al ir ganando US$200 asegura US$100 y sube el piso de US$100 en US$100
+ESCALON = 100
+
+
+def piso_usd(clave, maxima_usd):
+    """Ganancia mínima asegurada (US$) según lo máximo que llegó a ir ganando la operación. None = todavía nada asegurado."""
+    if clave == 'orb':
+        return 0.0 if maxima_usd >= BREAK_EVEN_ORB else None
+    if maxima_usd >= ESCALERA_DESDE:
+        return float((maxima_usd // ESCALON) * ESCALON - ESCALON)
+    return None
