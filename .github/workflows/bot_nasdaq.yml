@@ -4,6 +4,11 @@ name: Bot Nasdaq (demo)
 # El bot decide solo qué tramo le toca según la hora. Si los dos coinciden, el de la tarde espera a que termine el de la mañana.
 on:
   workflow_dispatch:
+    inputs:
+      prueba:
+        description: 'Solo probar la conexion, sin operar'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -69,10 +74,12 @@ jobs:
           MT5_SERVER: ${{ secrets.MT5_SERVER }}
           GH_TOKEN: ${{ github.token }}
           PYTHONIOENCODING: utf-8
-        run: python bot_nasdaq.py
+          PRUEBA: ${{ inputs.prueba }}
+        shell: bash
+        run: if [ "$PRUEBA" = "true" ]; then python bot_nasdaq.py --prueba; else python bot_nasdaq.py; fi
 
       - name: Guardar la bitacora en el repositorio
-        if: always()
+        if: always() && inputs.prueba != true
         shell: bash
         run: |
           git config user.name "bot-nasdaq"

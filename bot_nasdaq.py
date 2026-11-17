@@ -264,11 +264,44 @@ def publicar(texto):
         print(f'::warning::No pude publicar el resumen: {e!r}'[:300])
 
 
+def prueba():
+    """Se conecta, revisa todo y muestra lo que habría hecho el modelo el último día de bolsa. NO opera."""
+    if not iniciar() or mt5.account_info() is None:
+        print(f'❌ No pude conectar con MT5 ({mt5.last_error()}): revisa los secretos MT5_LOGIN, MT5_PASSWORD y MT5_SERVER.'); sys.exit(1)
+    acc = mt5.account_info()
+    print(f"✅ Conectado a la cuenta {acc.login} ({acc.server}) · {'DEMO' if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else 'REAL (el bot no operaría)'}"
+          f" · equity {acc.equity:,.2f} {acc.currency} · apalancamiento 1:{acc.leverage}")
+    sym = buscar_simbolo()
+    if sym is None:
+        print('❌ No encontré el Nasdaq-100 (USTEC).'); sys.exit(1)
+    calcular_desfase(sym); info = mt5.symbol_info(sym); t = mt5.symbol_info_tick(sym)
+    print(f'✅ Símbolo {sym} · {lotes_por_mnq(info):g} lotes por estrategia (≈1 MNQ) · spread {t.ask - t.bid:.2f} puntos · '
+          f'servidor {DESFASE / 3600:+.0f} h respecto a Nueva York')
+    df = velas(sym)
+    if df is None or len(df) == 0:
+        print('❌ MT5 no dio velas de 5 min.'); sys.exit(1)
+    dias = sorted({d for d in df.index.date if str(d) not in FERIADOS})
+    ultimo = dias[-1]
+    hoy_df, previos = partir_dias(df, ultimo)
+    print(f'✅ Historia: {len(previos)} días completos antes del {ultimo} (se necesitan 14)')
+    niv = niveles_orb(hoy_df)
+    if niv:
+        lado, est = modelo_orb(hoy_df, *niv)
+        print(f"   {ultimo} · rango 30 min {niv[1]:,.2f}–{niv[0]:,.2f} → {'compra' if lado > 0 else 'venta' if lado < 0 else 'sin operación'} ({est})")
+    fin = dt.datetime.combine(ultimo, T('15:55'))
+    pos, txt, _ = modelo_ruido(hoy_df, previos, float(previos[-1].c.iloc[-1]) if previos else None, fin)
+    print(f"   {ultimo} · zona de ruido al final del día: {'—' if pos is None else {1: 'comprado', -1: 'vendido', 0: 'fuera'}[pos]} · {txt}")
+    print('✅ Prueba terminada sin operar.')
+    mt5.shutdown()
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
+    if '--prueba' in sys.argv:
+        return prueba()
     ahora = ahora_ny(); hoy = ahora.date()
     if hoy.weekday() >= 5 or str(hoy) in FERIADOS:
         print(f'{hoy}: no hay bolsa en Nueva York. No hago nada.'); return
