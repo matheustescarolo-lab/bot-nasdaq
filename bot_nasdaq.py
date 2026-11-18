@@ -534,6 +534,9 @@ def main():
         n_mnq = max(1, round(n_mnq * 0.5))
         log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → medio tamaño: {n_mnq} MNQ')
     lotes = round(round(lotes_por_mnq(info) * n_mnq / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+    if info.volume_max and lotes > info.volume_max:
+        log('aviso', detalle=f'{lotes} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
+        lotes = float(info.volume_max)
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
     est = leer_estado()
