@@ -298,6 +298,7 @@ def proteger(sym, df):
 
 
 SACUDIDA = 0.006   # rango 30 min: si una vela de 5 min se mueve más de 0.6% EN CONTRA, sale al cierre de esa vela (8 años: Sharpe 1.24→1.35)
+MIEDO_CORTO = 1.10   # VIX9D/VIX al cierre de ayer: arriba de esto, medio tamaño (8 años: esos días −$40/día vs +$35, t −2.4; Sharpe 1.50→1.57)
 
 
 def sacudida(sym, df, hoy):
@@ -458,7 +459,13 @@ def main():
         log('error', detalle='no encontré el Nasdaq-100 (USTEC) en MT5'); sys.exit(1)
     calcular_desfase(sym)
     info = mt5.symbol_info(sym)
+    global CONTEXTO
+    CONTEXTO = leer_contexto(hoy)
     n_mnq, peso, v_hoy, v_med = contratos_hoy(sym)
+    r9 = (CONTEXTO.get('marcas') or {}).get('vix9d_vix') if CONTEXTO else None
+    if r9 and r9 > MIEDO_CORTO:
+        n_mnq = max(1, round(n_mnq * 0.5))
+        log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → medio tamaño: {n_mnq} MNQ')
     lotes = round(round(lotes_por_mnq(info) * n_mnq / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
@@ -471,8 +478,6 @@ def main():
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
                           f'modo examen #{est["examen"]["n"]} (meta diaria +{META_DIARIA:,.0f}) · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
-    global CONTEXTO
-    CONTEXTO = leer_contexto(hoy)
     if CONTEXTO:
         m = CONTEXTO.get('marcas', {})
         evs = ', '.join(f"{e['hora_mx']} {e['evento']}" for e in (CONTEXTO.get('calendario') or [])) or 'sin eventos'

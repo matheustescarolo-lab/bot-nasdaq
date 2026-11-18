@@ -125,7 +125,7 @@ def main():
     c = dict(fecha=str(hoy), generado_ny=ahora.strftime('%Y-%m-%d %H:%M'), errores={})
     for clave, fn in [('calendario', lambda: calendario(hoy)), ('reportes_ayer', lambda: reportes(ayer)),
                       ('reportes_hoy', lambda: reportes(hoy)), ('titulares', titulares), ('trump', trump),
-                      ('nasdaq_futuro', lambda: yahoo('NQ=F')), ('sp_futuro', lambda: yahoo('ES=F')), ('vix', lambda: yahoo('%5EVIX')), ('dealers', dealers), ('fondos', lambda: fondos(hoy))]:
+                      ('nasdaq_futuro', lambda: yahoo('NQ=F')), ('sp_futuro', lambda: yahoo('ES=F')), ('vix', lambda: yahoo('%5EVIX')), ('vix9d', lambda: yahoo('%5EVIX9D')), ('dealers', dealers), ('fondos', lambda: fondos(hoy))]:
         try:
             c[clave] = fn()
         except Exception as e:
@@ -142,6 +142,7 @@ def main():
         gigantes_reportan_hoy_tras_cierre=[r['simbolo'] for r in (c.get('reportes_hoy') or []) if 'after' in (r.get('hora') or '').lower()],
         gap_nasdaq_futuro=(c.get('nasdaq_futuro') or {}).get('cambio'),
         vix=(c.get('vix') or {}).get('precio'),
+        vix9d_vix=round(c['vix9d']['cierre_anterior'] / c['vix']['cierre_anterior'], 3) if (c.get('vix9d') or {}).get('cierre_anterior') and (c.get('vix') or {}).get('cierre_anterior') else None,
         dix_pct=(c.get('dealers') or {}).get('dix_pct'), gex_pct=(c.get('dealers') or {}).get('gex_pct'),
         fondos_semana=(c.get('fondos') or {}).get('lectura'),
         trump_posts_de_mercado=sum(1 for p in (c.get('trump') or []) if p.get('habla_de_mercado')))
@@ -152,7 +153,7 @@ def main():
     m = c['marcas']
     print(f"Contexto {hoy}: {len(c.get('calendario') or [])} eventos ({eventos or 'ninguno'}) · decisión Fed {m['decision_fed']} · minutas {m['minutas_fed']} · "
           f"reportaron ayer {m['gigantes_reportaron_ayer_tras_cierre']} · hoy antes {m['gigantes_reportan_hoy_antes']} · hoy después {m['gigantes_reportan_hoy_tras_cierre']} · "
-          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · Trump: {len(c.get('trump') or [])} posts ({m['trump_posts_de_mercado']} de mercado) · DIX pct {m['dix_pct']} · GEX pct {m['gex_pct']} · fondos {m['fondos_semana']} · errores {c['errores']}")
+          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · VIX9D/VIX {m['vix9d_vix']} · Trump: {len(c.get('trump') or [])} posts ({m['trump_posts_de_mercado']} de mercado) · DIX pct {m['dix_pct']} · GEX pct {m['gex_pct']} · fondos {m['fondos_semana']} · errores {c['errores']}")
 
 
 if __name__ == '__main__':
