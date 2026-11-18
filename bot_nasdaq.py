@@ -41,8 +41,9 @@ FIN_MANANA = T('12:50')
 FERIADOS = {'2026-11-26', '2026-12-25', '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
             '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24'}
 # Días de decisión de la Fed (2 pm NY): el rango de 30 min gana solo 20% de las veces (−US$35/trade, t = −3.0 en 8 años) → ese día no opera ORB
-# Fuente: federalreserve.gov (fomccalendars). Agregar las fechas de 2027 cuando la Fed las publique.
-FOMC = {'2026-12-09'}
+# Fuente: federalreserve.gov, comunicado del 12-nov-2026 (calendario tentativo revisado de 2027; octubre 26-27 sin decisión,
+# noviembre reemplaza a diciembre). Revisar si la Fed mueve alguna fecha.
+FOMC = {'2026-12-09', '2027-01-27', '2027-03-17', '2027-04-28', '2027-06-09', '2027-07-28', '2027-09-15', '2027-11-17'}
 MEDIO_DIA = {'2026-11-27', '2026-12-24', '2027-11-26'}        # la bolsa cierra a las 13:00: el bot cierra todo a las 12:55
 FILL = [mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN]
 DESFASE = None
