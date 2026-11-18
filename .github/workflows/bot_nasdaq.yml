@@ -53,9 +53,9 @@ jobs:
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
       BOT_MNQ: ${{ matrix.mnq }}
-      MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || secrets.MT5_LOGIN }}
-      MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || secrets.MT5_PASSWORD }}
-      MT5_SERVER: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_SERVER || secrets.MT5_SERVER }}
+      MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || matrix.cuenta == 'tickmill' && secrets.MT5_LOGIN || '' }}
+      MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || matrix.cuenta == 'tickmill' && secrets.MT5_PASSWORD || '' }}
+      MT5_SERVER: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_SERVER || matrix.cuenta == 'tickmill' && secrets.MT5_SERVER || '' }}
     steps:
       - name: ¿Hay cuenta configurada?
         shell: bash
