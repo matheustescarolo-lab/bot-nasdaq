@@ -1,0 +1,20 @@
+{
+ "ftmo": {
+  "fase": 1,
+  "inicio": "2026-11-18",
+  "base": 100000.0,
+  "cierre_prev": 100000.0,
+  "dias": 0,
+  "listo": false
+ },
+ "dia": {
+  "fecha": "2026-11-18",
+  "eq_inicio": 100000.0,
+  "min_eq": 97817.5,
+  "cerrado": false,
+  "quemado": false,
+  "meta": 10050.0,
+  "piso": 95000.0,
+  "obj": 110000.0
+ }
+}

@@ -1,0 +1,5 @@
+hora_UTC,evento,estrategia,lado,lotes,precio,detalle
+2026-11-18 14:48:12,tamaño,,,,,volatilidad 14 días 3.44% vs normal 1.78% → peso 0.52 → 3 MNQ por estrategia
+2026-11-18 14:48:12,inicio,,,,,"tramo de la mañana · US100.cash · 6 lotes por estrategia (≈3 MNQ) · equity 100,000.00 · FTMO fase 1 · meta del día +10,050 · freno en equity 95,400 · cuenta demo · trabaja hasta las 12:50 NY"
+2026-11-18 15:00:24,entrada,Rango 30 min,compra,6.0,27239.88,"rompió el rango de 30 min (26,871.63–27,234.63) · stop 26,871.63"
+2026-11-18 17:50:00,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
