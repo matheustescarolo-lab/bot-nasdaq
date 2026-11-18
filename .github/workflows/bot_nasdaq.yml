@@ -67,6 +67,11 @@ jobs:
           Start-Sleep -Seconds 60
           Remove-Item $ini -Force
 
+      - name: Bajar el contexto del dia (calendario, reportes, futuros, VIX, titulares)
+        continue-on-error: true
+        timeout-minutes: 3
+        run: python contexto.py
+
       - name: Correr el bot (un tramo del dia)
         env:
           MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
@@ -84,5 +89,5 @@ jobs:
         run: |
           git config user.name "bot-nasdaq"
           git config user.email "bot-nasdaq@users.noreply.github.com"
-          for f in bitacora_nasdaq.csv estado_nasdaq.json; do if [ -f $f ]; then git add $f; fi; done
+          for f in bitacora_nasdaq.csv estado_nasdaq.json contexto; do if [ -e $f ]; then git add $f; fi; done
           git diff --cached --quiet || (git commit -m "Bitacora y estado Nasdaq $(date -u +%Y-%m-%d)" && git pull -q --rebase && git push)

@@ -36,7 +36,8 @@ FERIADOS = {'2026-11-26', '2026-12-25', '2027-01-01', '2027-01-18', '2027-02-15'
 FOMC = {'2026-12-09'}
 MEDIO_DIA = {'2026-11-27', '2026-12-24', '2027-11-26'}        # la bolsa cierra a las 13:00: el bot cierra todo a las 12:55
 FILL = [mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN]
-DESFASE = None                   # segundos que hay que restar a la hora del servidor para tener la de Nueva York
+DESFASE = None
+CONTEXTO = {}                   # segundos que hay que restar a la hora del servidor para tener la de Nueva York
 
 
 def ahora_ny():
@@ -110,6 +111,16 @@ def partir_dias(df, hoy):
     dias = {d: g for d, g in df.groupby(df.index.date)}
     previos = [g for d, g in sorted(dias.items()) if d < hoy and str(d) not in FERIADOS and len(g) >= VELAS_DIA_MIN]
     return dias.get(hoy, df.iloc[0:0]), previos
+
+
+def leer_contexto(hoy):
+    """Contexto del día bajado por contexto.py (calendario, reportes, futuros, VIX). {} si no hay o es de otro día."""
+    try:
+        with open(os.path.join(HERE, 'contexto', 'hoy.json'), encoding='utf-8') as fh:
+            c = json.load(fh)
+        return c if c.get('fecha') == str(hoy) else {}
+    except Exception:
+        return {}
 
 
 def leer_estado():
@@ -209,7 +220,7 @@ def sincronizar(sym, df, hoy, ahora, lotes):
         return
     # --- Rango de 30 min ---
     niv = niveles_orb(hoy_df)
-    if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC:
+    if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC and not CONTEXTO.get('marcas', {}).get('decision_fed'):
         hi, lo = niv
         lado_m, est = modelo_orb(hoy_df, hi, lo)
         lado_r, _ = posicion(sym, 'orb')
@@ -424,6 +435,14 @@ def main():
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{CONTRATOS} MNQ) · equity {acc.equity:,.2f} · '
                           f'modo examen #{est["examen"]["n"]} (meta diaria +{META_DIARIA:,.0f}) · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
+    global CONTEXTO
+    CONTEXTO = leer_contexto(hoy)
+    if CONTEXTO:
+        m = CONTEXTO.get('marcas', {})
+        evs = ', '.join(f"{e['hora_mx']} {e['evento']}" for e in (CONTEXTO.get('calendario') or [])) or 'sin eventos'
+        log('contexto', detalle=f"{evs} · reportaron ayer: {m.get('gigantes_reportaron_ayer_tras_cierre')} · hoy: "
+                                f"{m.get('gigantes_reportan_hoy_antes')} / {m.get('gigantes_reportan_hoy_tras_cierre')} · VIX {m.get('vix')}"
+                                + (' · DÍA DE DECISIÓN DE LA FED: no opera el rango de 30 min' if m.get('decision_fed') else ''))
     cerrar_viejas(sym, hoy)
     errores = 0
     while True:
