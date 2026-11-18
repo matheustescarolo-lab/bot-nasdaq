@@ -157,6 +157,21 @@ def examen_nuevo(e, equity, hoy):
     e['examen'] = dict(n=n, inicio=str(hoy), base=equity, alto=0.0, mll=-EXAMEN_MLL, bloq=False, mejor_dia=0.0, dias=0)
 
 
+def meta_del_dia(x, d):
+    """Meta del día = lo justo que falta para +3,000, sin que el día pase de 50% (consistencia) y con tope META_DIARIA.
+    8 años: pasa 22%→25% por intento (en las dos mitades), misma velocidad."""
+    if not META_DIARIA:
+        return 0
+    bal = d['eq_inicio'] - x['base']; falta = EXAMEN_META - bal
+    if bal > 0 and falta + 50 <= bal:
+        meta = min(META_DIARIA, falta + 50)
+    elif bal > 0:
+        meta = min(META_DIARIA, bal)
+    else:
+        meta = META_DIARIA
+    return max(meta, 300.0)
+
+
 def lotes_por_mnq(info):
     usd_por_punto_lote = info.trade_tick_value / info.trade_tick_size if info.trade_tick_size else 1.0
     paso = info.volume_step or 0.01
@@ -475,8 +490,9 @@ def main():
     if est.get('dia', {}).get('fecha') != str(hoy):
         est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, quemado=False)
     guardar_estado(est)
+    meta_hoy = meta_del_dia(est['examen'], est['dia'])
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
-                          f'modo examen #{est["examen"]["n"]} (meta diaria +{META_DIARIA:,.0f}) · '
+                          f'modo examen #{est["examen"]["n"]} (meta del día +{meta_hoy:,.0f}) · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
     if CONTEXTO:
         m = CONTEXTO.get('marcas', {})
@@ -511,7 +527,7 @@ def main():
                 d['cerrado'] = d['quemado'] = True
                 log('examen', detalle=f"examen #{x['n']} quemado: equity {eq:,.2f} · límite {x['base'] + x['mll']:,.2f}")
                 guardar_estado(est)
-            elif not d['cerrado'] and META_DIARIA and eq - d['eq_inicio'] >= META_DIARIA:
+            elif not d['cerrado'] and meta_hoy and eq - d['eq_inicio'] >= meta_hoy:
                 for clave in MAGIC:
                     cerrar(sym, clave, f'meta diaria alcanzada (+{eq - d["eq_inicio"]:,.0f} USD)')
                 d['cerrado'] = True
