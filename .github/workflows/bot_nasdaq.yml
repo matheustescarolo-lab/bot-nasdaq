@@ -121,8 +121,10 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: |
-          if (Test-Path ctx_linux/hoy.json) { Copy-Item ctx_linux/* contexto/ -Force; Write-Host 'Contexto de Linux'; Get-Content contexto/hoy.json -TotalCount 3 }
-          else { python contexto.py }
+          New-Item -ItemType Directory -Force -Path contexto | Out-Null
+          if (Test-Path ctx_linux/hoy.json) { Copy-Item ctx_linux/* contexto/ -Force -Recurse; Write-Host 'Contexto de Linux' }
+          if (-not (Test-Path contexto/hoy.json)) { python contexto.py }
+          Get-Content contexto/hoy.json -TotalCount 3
 
       - name: Correr el bot (un tramo del dia)
         if: env.SALTAR != '1'

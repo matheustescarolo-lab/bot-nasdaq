@@ -572,6 +572,8 @@ def main():
         log('contexto', detalle=f"{evs} · reportaron ayer: {m.get('gigantes_reportaron_ayer_tras_cierre')} · hoy: "
                                 f"{m.get('gigantes_reportan_hoy_antes')} / {m.get('gigantes_reportan_hoy_tras_cierre')} · VIX {m.get('vix')}"
                                 + (' · DÍA DE DECISIÓN DE LA FED: no opera el rango de 30 min' if m.get('decision_fed') else ''))
+    else:
+        log('aviso', detalle='SIN CONTEXTO del día (no llegó contexto/hoy.json): sin filtro de Fed por contexto ni recorte por VIX9D')
     cerrar_viejas(sym, hoy)
     errores = 0
     while True:
