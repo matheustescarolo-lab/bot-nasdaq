@@ -281,6 +281,23 @@ def proteger(sym, df):
                 log('error', NOMBRE[clave], detalle=f"no pude mover el stop: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
 
 
+SACUDIDA = 0.006   # rango 30 min: si una vela de 5 min se mueve más de 0.6% EN CONTRA, sale al cierre de esa vela (8 años: Sharpe 1.24→1.35)
+
+
+def sacudida(sym, df, hoy):
+    """Detector de sacudidas (Trump, noticias, cualquier sorpresa): revisa la última vela de 5 min ya cerrada."""
+    d = df[df.index.date == hoy]
+    if len(d) < 3:
+        return
+    ult, ant = d.iloc[-2], d.iloc[-3]                 # la última es la que se está formando
+    mov = ult.c / ant.c - 1
+    if abs(mov) <= SACUDIDA:
+        return
+    lado, _ = posicion(sym, 'orb')
+    if lado != 0 and lado * mov < 0:
+        cerrar(sym, 'orb', f'sacudida en contra: la vela de las {d.index[-2]:%H:%M} NY se movió {mov:+.2%}')
+
+
 def cerrar_viejas(sym, hoy):
     for clave in MAGIC:
         _, ps = posicion(sym, clave)
@@ -479,6 +496,7 @@ def main():
             df = velas(sym)
             if df is not None and not d['cerrado']:
                 sincronizar(sym, df, hoy, ahora, lotes)
+                sacudida(sym, df, hoy)
                 proteger(sym, df)
             errores = 0
         except Exception as e:
