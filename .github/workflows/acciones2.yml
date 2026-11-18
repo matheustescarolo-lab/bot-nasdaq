@@ -1,0 +1,39 @@
+name: Acciones del Nasdaq 5 min, parte 2 (laboratorio)
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  anio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        inst: [pepususd, cscoususd, adbeususd, intcususd, qcomususd, txnususd, intuususd, amatususd, cmcsaususd, amgnususd, isrgususd, honususd, panwususd, muususd, lrcxususd, adiususd, sbuxususd, mdlzususd, gildususd, vrtxususd, regnususd, pyplususd, mrvlususd, ftntususd, pltrususd, tmusususd, snpsususd, cdnsususd, orlyususd, marususd]
+        y: [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    steps:
+      - uses: actions/setup-node@v5
+        with: {node-version: '20'}
+      - run: |
+          hasta="$((${{ matrix.y }}+1))-01-01"; [ "${{ matrix.y }}" = "$(date -u +%Y)" ] && hasta=$(date -u +%Y-%m-%d)
+          npx --yes dukascopy-node@latest -i ${{ matrix.inst }} -from ${{ matrix.y }}-01-01 -to $hasta -t m5 -f csv -v true -dir d -fn ${{ matrix.inst }}_${{ matrix.y }} -bs 15 -bp 300 -r 3 || echo "sin datos"
+      - uses: actions/upload-artifact@v4
+        with: {name: '${{ matrix.inst }}_${{ matrix.y }}', path: d, if-no-files-found: ignore}
+  juntar:
+    needs: anio
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {path: crudo}
+      - run: |
+          pip install -q pandas
+          mkdir -p extra/acciones
+          for i in pepususd cscoususd adbeususd intcususd qcomususd txnususd intuususd amatususd cmcsaususd amgnususd isrgususd honususd panwususd muususd lrcxususd adiususd sbuxususd mdlzususd gildususd vrtxususd regnususd pyplususd mrvlususd ftntususd pltrususd tmusususd snpsususd cdnsususd orlyususd marususd; do
+            mkdir -p t_$i; cp -r crudo/${i}_* t_$i/ 2>/dev/null; python convertir_generico.py t_$i extra/acciones/$i.csv && gzip -f extra/acciones/$i.csv || true
+          done
+          ls -la extra/acciones
+      - run: |
+          git config user.name bot; git config user.email bot@users.noreply.github.com
+          git add extra/acciones; git commit -m "Laboratorio: 30 acciones más del Nasdaq 5 min" && git pull -q --rebase && git push || true
