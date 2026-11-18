@@ -35,28 +35,54 @@ jobs:
           path: contexto/
 
   operar:
+    # Dos cuentas a la vez con la misma llamada de cron-job.org: Tickmill (demo, 3 versiones de Lucid) y FTMO (reto 2-Step)
     needs: contexto
     if: always()
     runs-on: windows-latest
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cuenta: tickmill
+            mnq: '4'
+            instalador: https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe
+          - cuenta: ftmo
+            mnq: '6'
+            instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
+    env:
+      BOT_CUENTA: ${{ matrix.cuenta }}
+      BOT_MNQ: ${{ matrix.mnq }}
+      MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || secrets.MT5_LOGIN }}
+      MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || secrets.MT5_PASSWORD }}
+      MT5_SERVER: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_SERVER || secrets.MT5_SERVER }}
     steps:
+      - name: ¿Hay cuenta configurada?
+        shell: bash
+        run: |
+          if [ -z "$MT5_LOGIN" ]; then echo "Sin secretos para $BOT_CUENTA, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
+
       - uses: actions/checkout@v5
+        if: env.SALTAR != '1'
         with:
           ref: main
 
       - uses: actions/setup-python@v6
+        if: env.SALTAR != '1'
         with:
           python-version: '3.12'
 
       - name: Instalar librerias
+        if: env.SALTAR != '1'
         run: python -m pip install --disable-pip-version-check -q MetaTrader5 pandas numpy tzdata
 
-      - name: Instalar MetaTrader 5 de Tickmill
+      - name: Instalar MetaTrader 5 de la cuenta
+        if: env.SALTAR != '1'
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
           $inst = Join-Path $env:RUNNER_TEMP 'mt5setup.exe'
-          Invoke-WebRequest -Uri 'https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe' -OutFile $inst
+          Invoke-WebRequest -Uri '${{ matrix.instalador }}' -OutFile $inst
           Start-Process -FilePath $inst -ArgumentList '/auto'
           $t0 = Get-Date; $exe = $null
           while (-not $exe -and ((Get-Date) - $t0).TotalMinutes -lt 8) {
@@ -70,11 +96,8 @@ jobs:
           "MT5_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
 
       - name: Abrir MetaTrader con la cuenta y Algo Trading activado
+        if: env.SALTAR != '1'
         shell: pwsh
-        env:
-          MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
-          MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
-          MT5_SERVER: ${{ secrets.MT5_SERVER }}
         run: |
           $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
           $txt = "[Common]`r`nLogin=$env:MT5_LOGIN`r`nPassword=$env:MT5_PASSWORD`r`nServer=$env:MT5_SERVER`r`n" +
@@ -85,6 +108,7 @@ jobs:
           Remove-Item $ini -Force
 
       - name: Traer el contexto bajado en Linux
+        if: env.SALTAR != '1'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -92,6 +116,7 @@ jobs:
           path: ctx_linux
 
       - name: Usar ese contexto (si no llegó, bajarlo aquí)
+        if: env.SALTAR != '1'
         continue-on-error: true
         timeout-minutes: 3
         shell: pwsh
@@ -100,10 +125,8 @@ jobs:
           else { python contexto.py }
 
       - name: Correr el bot (un tramo del dia)
+        if: env.SALTAR != '1'
         env:
-          MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
-          MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
-          MT5_SERVER: ${{ secrets.MT5_SERVER }}
           GH_TOKEN: ${{ github.token }}
           PYTHONIOENCODING: utf-8
           PRUEBA: ${{ inputs.prueba }}
@@ -111,10 +134,12 @@ jobs:
         run: if [ "$PRUEBA" = "true" ]; then python bot_nasdaq.py --prueba; else python bot_nasdaq.py; fi
 
       - name: Guardar la bitacora en el repositorio
-        if: always() && inputs.prueba != true
+        if: always() && inputs.prueba != true && env.SALTAR != '1'
         shell: bash
         run: |
           git config user.name "bot-nasdaq"
           git config user.email "bot-nasdaq@users.noreply.github.com"
-          for f in bitacora_nasdaq.csv estado_nasdaq.json contexto; do if [ -e $f ]; then git add $f; fi; done
-          git diff --cached --quiet || (git commit -m "Bitacora y estado Nasdaq $(date -u +%Y-%m-%d)" && git pull -q --rebase && git push)
+          for f in bitacora_nasdaq*.csv estado_nasdaq*.json contexto; do if [ -e $f ]; then git add $f; fi; done
+          git diff --cached --quiet && exit 0
+          git commit -m "Bitacora y estado Nasdaq ($BOT_CUENTA) $(date -u +%Y-%m-%d)"
+          for i in 1 2 3 4 5; do git pull -q --rebase -X theirs && git push && break; sleep $((RANDOM % 20 + 5)); done

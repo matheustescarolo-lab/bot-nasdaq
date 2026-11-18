@@ -17,7 +17,13 @@ from estrategias import niveles_orb, modelo_orb, modelo_ruido, piso_usd, LOOK, V
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
-SIMBOLOS = ['USTEC', 'NAS100', 'US100', 'USTECH', 'NDX100']
+SIMBOLOS = ['USTEC', 'US100.cash', 'NAS100', 'US100', 'USTECH', 'NDX100']
+# Cuenta: 'tickmill' (demo, 3 versiones del examen de Lucid) o 'ftmo' (reto FTMO 2-Step real: metas 10% y 5%, pérdida diaria 5%, máxima 10% fija)
+CUENTA = os.environ.get('BOT_CUENTA', 'tickmill').lower()
+SUF = '' if CUENTA == 'tickmill' else f'_{CUENTA}'
+BITACORA = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'bitacora_nasdaq{SUF}.csv')
+FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital inicial de la cuenta FTMO
+FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
 CONTRATOS = int(os.environ.get('BOT_MNQ', '4'))                 # MNQ por estrategia que opera la demo (= versión B)
@@ -26,7 +32,7 @@ CONTRATOS = int(os.environ.get('BOT_MNQ', '4'))                 # MNQ por estrat
 VERSIONES = {'A': 3, 'B': 4, 'C': 6}
 META_DIARIA = float(os.environ.get('BOT_META_DIARIA', '1550'))   # al ganar esto en el día, cierra todo y para hasta mañana
 EXAMEN_META, EXAMEN_MLL, EXAMEN_BLOQUEO = 3000.0, 2000.0, 2100.0  # reglas de Lucid Flex 50K
-ESTADO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estado_nasdaq.json')
+ESTADO = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'estado_nasdaq{SUF}.json')
 MAGIC = {'orb': 301, 'ruido': 302}
 NOMBRE = {'orb': 'Rango 30 min', 'ruido': 'Zona de ruido'}
 STOP_EMERGENCIA = 0.025          # zona de ruido: stop en el servidor a 2.5% en contra (por si el bot se cae con la posición abierta)
@@ -48,7 +54,7 @@ def ahora_ny():
 
 
 def log(evento, estrategia='', lado='', lotes='', precio='', detalle=''):
-    f = os.path.join(HERE, 'bitacora_nasdaq.csv'); nuevo = not os.path.exists(f)
+    f = BITACORA; nuevo = not os.path.exists(f)
     fila = [dt.datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S'), evento, estrategia, lado, lotes, precio, detalle]
     with open(f, 'a', newline='', encoding='utf-8') as fh:
         w = csv.writer(fh)
@@ -342,7 +348,7 @@ def cerrar_viejas(sym, hoy):
 def resumen(sym, hoy):
     acc = mt5.account_info()
     ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
-    L = [f"📊 Update del bot Nasdaq — {hoy:%d-%m-%Y}", f'💰 Cuenta demo: ${acc.equity:,.2f}']
+    L = [f"📊 Update del bot Nasdaq{' FTMO' if CUENTA == 'ftmo' else ''} — {hoy:%d-%m-%Y}", f'💰 Cuenta: ${acc.equity:,.2f}']
     total = 0.0
     for clave in MAGIC:
         mios = [d for d in ds if d.magic == MAGIC[clave] and a_ny(d.time).date() == hoy]
@@ -351,14 +357,14 @@ def resumen(sym, hoy):
         total += pnl
         L.append(f"• {NOMBRE[clave]}: {'sin operaciones' if n == 0 else f'{n} operación(es) · {pnl:+,.2f} USD'}")
     L.append(f'🧮 Total del día: {total:+,.2f} USD (base {CONTRATOS} MNQ por estrategia, ajustado por volatilidad)')
-    L += cerrar_dia_examen(acc.equity, hoy)
+    L += ftmo_cierre(acc.equity, hoy) if CUENTA == 'ftmo' else cerrar_dia_examen(acc.equity, hoy)
     errores = 0
     try:
-        with open(os.path.join(HERE, 'bitacora_nasdaq.csv'), encoding='utf-8') as fh:
+        with open(BITACORA, encoding='utf-8') as fh:
             errores = sum(1 for f in csv.DictReader(fh) if f['evento'] == 'error' and f['hora_UTC'][:10] >= f'{hoy:%Y-%m-%d}')
     except Exception:
         pass
-    L.append(f'⚠️ {errores} error(es) hoy: revisa bitacora_nasdaq.csv' if errores else '✅ Sin errores')
+    L.append(f'⚠️ {errores} error(es) hoy: revisa {os.path.basename(BITACORA)}' if errores else '✅ Sin errores')
     texto = '\n'.join(L)
     log('resumen', detalle=texto.replace('\n', ' | '))
     publicar(texto)
@@ -400,11 +406,52 @@ def cerrar_dia_examen(equity, hoy):
     return L
 
 
+def ftmo_fase_nueva(e, fase, equity, hoy):
+    e['ftmo'] = dict(fase=fase, inicio=str(hoy), base=equity, cierre_prev=equity, dias=0, listo=False)
+
+
+def ftmo_dia(e, eq, hoy):
+    """Meta y pisos del día en el reto FTMO. La fase 2 se simula sobre la misma cuenta, con nueva base."""
+    f = e['ftmo']; ini = FTMO_INICIAL
+    obj = f['base'] + (0.10 if f['fase'] == 1 else 0.05) * ini
+    piso = max(f['cierre_prev'] - 0.05 * ini, f['base'] - 0.10 * ini)   # pérdida diaria (vs cierre de ayer) o máxima (fija)
+    meta = 50.0 if f['listo'] else max(obj - eq + 50.0, 100.0)
+    return dict(fecha=str(hoy), eq_inicio=eq, min_eq=eq, cerrado=False, quemado=False, meta=meta, piso=piso, obj=obj)
+
+
+def ftmo_cierre(equity, hoy):
+    e = leer_estado(); f = e.get('ftmo'); d = e.get('dia', {})
+    if not f:
+        return []
+    ini = FTMO_INICIAL; L = []
+    if d.get('quemado'):
+        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='quemado'))
+        L.append(f"🔥 Reto FTMO fase {f['fase']}: tocó el freno antes del límite (equity {equity:,.0f}). En una cuenta real habría que revisar si sigue viva.")
+    f['dias'] += 1; f['cierre_prev'] = equity
+    gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
+    if gan >= obj:
+        f['listo'] = True
+    if f['listo'] and f['dias'] >= 4:
+        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='aprobada', dias=f['dias']))
+        if f['fase'] == 1:
+            L.append(f"🏆 FASE 1 APROBADA en {f['dias']} días (+${gan:,.0f}). Mañana arranca la fase 2 (meta +5%).")
+            ftmo_fase_nueva(e, 2, equity, hoy)
+        else:
+            L.append(f"🏆🏆 FASE 2 APROBADA en {f['dias']} días (+${gan:,.0f}): en FTMO real ya serías cuenta fondeada.")
+            ftmo_fase_nueva(e, 1, equity, hoy)
+    else:
+        piso = max(equity - 0.05 * ini, f['base'] - 0.10 * ini)
+        L.append(f"🎯 Reto FTMO fase {f['fase']} · día {f['dias']} · lleva {gan:+,.0f} de +{obj:,.0f}"
+                 f"{' (meta lograda, completa los 4 días mínimos)' if f['listo'] else ''} · margen mañana ${equity - piso:,.0f}")
+    guardar_estado(e)
+    return L
+
+
 def publicar(texto):
     token, repo = os.environ.get('GH_TOKEN', ''), os.environ.get('GITHUB_REPOSITORY', '')
     if not (token and repo):
         return
-    titulo = '📊 Update diario del bot Nasdaq'
+    titulo = '📊 Update diario del bot Nasdaq' + (' FTMO' if CUENTA == 'ftmo' else '')
     def gh(metodo, ruta, datos=None):
         req = urllib.request.Request(f'https://api.github.com/repos/{repo}{ruta}', method=metodo,
                                      data=json.dumps(datos).encode() if datos is not None else None,
@@ -491,10 +538,21 @@ def main():
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
     est = leer_estado()
     est.pop('examen', None)
-    for v in VERSIONES:
+    if CUENTA == 'ftmo':
+        if 'ftmo' not in est:
+            ftmo_fase_nueva(est, 1, acc.balance, hoy)
+        if est.get('dia', {}).get('fecha') != str(hoy):
+            est['dia'] = ftmo_dia(est, acc.equity, hoy)
+        if est['ftmo']['listo']:
+            n_mnq = 1
+            lotes = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+        guardar_estado(est)
+        dd = est['dia']
+        meta_txt = f"FTMO fase {est['ftmo']['fase']} · meta del día +{dd['meta']:,.0f} · freno en equity {dd['piso'] + FTMO_FRENO * FTMO_INICIAL:,.0f}"
+    for v in (VERSIONES if CUENTA != 'ftmo' else {}):
         if v not in est.get('versiones', {}):
             examen_nuevo(est, v, hoy)
-    if est.get('dia', {}).get('fecha') != str(hoy) or 'v' not in est.get('dia', {}):
+    if CUENTA != 'ftmo' and (est.get('dia', {}).get('fecha') != str(hoy) or 'v' not in est.get('dia', {})):
         vs = {}
         for v, base in VERSIONES.items():
             n_v = max(1, round(base * peso))
@@ -503,9 +561,10 @@ def main():
             vs[v] = dict(n=n_v, f=n_v / n_mnq, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
         est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, v=vs)
     guardar_estado(est)
-    meta_txt = ' · '.join(f"{v} {s['n']} MNQ meta +{s['meta']:,.0f}" for v, s in est['dia']['v'].items())
+    if CUENTA != 'ftmo':
+        meta_txt = ' · '.join(f"{v} {s['n']} MNQ meta +{s['meta']:,.0f}" for v, s in est['dia']['v'].items())
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
-                          f'3 versiones del examen ({meta_txt}) · '
+                          f'{meta_txt} · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
     if CONTEXTO:
         m = CONTEXTO.get('marcas', {})
@@ -535,7 +594,18 @@ def main():
             if eq < d['min_eq']:
                 d['min_eq'] = eq
             R = eq - d['eq_inicio']
-            for v, s in d['v'].items():
+            if CUENTA == 'ftmo' and not d['cerrado']:
+                if eq <= d['piso'] + FTMO_FRENO * FTMO_INICIAL:
+                    for clave in MAGIC:
+                        cerrar(sym, clave, f'FRENO FTMO: equity {eq:,.0f} a menos de {FTMO_FRENO:.1%} del límite ({d["piso"]:,.0f})')
+                    d['cerrado'] = d['quemado'] = True
+                    log('examen', detalle=f'freno FTMO: equity {eq:,.2f} · límite {d["piso"]:,.2f}'); guardar_estado(est)
+                elif R >= d['meta']:
+                    for clave in MAGIC:
+                        cerrar(sym, clave, f'meta del día alcanzada (+{R:,.0f} USD)')
+                    d['cerrado'] = True
+                    log('meta', detalle=f'meta del día FTMO +{d["meta"]:,.0f} alcanzada ({R:+,.0f})'); guardar_estado(est)
+            for v, s in (d['v'].items() if CUENTA != 'ftmo' else []):
                 if s['fijo'] is not None:
                     continue
                 x, p = est['versiones'][v], R * s['f']
@@ -547,7 +617,7 @@ def main():
                     s['fijo'] = p
                     log('meta', detalle=f"versión {v} ({s['n']} MNQ): meta del día +{s['meta']:,.0f} alcanzada ({p:+,.0f})")
                     guardar_estado(est)
-            if not d['cerrado'] and all(s['fijo'] is not None for s in d['v'].values()):
+            if CUENTA != 'ftmo' and not d['cerrado'] and all(s['fijo'] is not None for s in d['v'].values()):
                 for clave in MAGIC:
                     cerrar(sym, clave, 'las 3 versiones terminaron su día (meta o quemado)')
                 d['cerrado'] = True
