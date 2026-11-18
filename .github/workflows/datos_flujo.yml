@@ -9,6 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: DIX y GEX (SqueezeMetrics) + COT Nasdaq (CFTC)
         run: |
+          pip install -q pandas
           mkdir -p extra
           curl -sSL -A "Mozilla/5.0" -o extra/dix_gex.csv https://squeezemetrics.com/monitor/static/DIX.csv || true
           head -3 extra/dix_gex.csv; wc -l extra/dix_gex.csv
