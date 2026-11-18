@@ -11,3 +11,8 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-17 20:55:01,salida,Rango 30 min,compra,2.0,26885.69,cierre del día (15:55 NY) · entró a 27117.96 · resultado aprox. +464.54 USD
 2026-11-17 20:55:01,salida,Zona de ruido,compra,2.0,26885.32,cierre del día (15:55 NY) · entró a 26871.39 · resultado aprox. -27.86 USD
 2026-11-17 20:55:01,resumen,,,,,"📊 Update del bot Nasdaq — 17-11-2026 | 💰 Cuenta demo: $49,955.42 | • Rango 30 min: 1 operación(es) · +464.54 USD | • Zona de ruido: 3 operación(es) · -509.12 USD | 🧮 Total del día: -44.58 USD (1 MNQ por estrategia) | ✅ Sin errores"
+2026-11-18 14:48:12,tamaño,,,,,volatilidad 14 días 3.45% vs normal 1.81% → peso 0.52 → 2 MNQ por estrategia
+2026-11-18 14:48:12,inicio,,,,,"tramo de la mañana · USTEC · 4 lotes por estrategia (≈2 MNQ) · equity 49,955.42 · A 2 MNQ meta +1,550 · B 2 MNQ meta +1,550 · C 3 MNQ meta +1,550 · cuenta demo · trabaja hasta las 12:50 NY"
+2026-11-18 15:00:23,entrada,Rango 30 min,compra,4.0,27236.45,"rompió el rango de 30 min (26,870.37–27,232.90) · stop 26,870.37"
+2026-11-18 16:18:15,examen,,,,,"versión C (3 MNQ): examen #1 quemado (-2,028 hoy, saldo -2,028)"
+2026-11-18 17:50:08,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas

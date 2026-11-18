@@ -1,0 +1,63 @@
+{
+ "versiones": {
+  "A": {
+   "n": 1,
+   "inicio": "2026-11-18",
+   "saldo": 0.0,
+   "alto": 0.0,
+   "mll": -2000.0,
+   "bloq": false,
+   "mejor_dia": 0.0,
+   "dias": 0
+  },
+  "B": {
+   "n": 1,
+   "inicio": "2026-11-18",
+   "saldo": 0.0,
+   "alto": 0.0,
+   "mll": -2000.0,
+   "bloq": false,
+   "mejor_dia": 0.0,
+   "dias": 0
+  },
+  "C": {
+   "n": 1,
+   "inicio": "2026-11-18",
+   "saldo": 0.0,
+   "alto": 0.0,
+   "mll": -2000.0,
+   "bloq": false,
+   "mejor_dia": 0.0,
+   "dias": 0
+  }
+ },
+ "dia": {
+  "fecha": "2026-11-18",
+  "eq_inicio": 49955.42,
+  "min_eq": 48491.1,
+  "cerrado": false,
+  "v": {
+   "A": {
+    "n": 2,
+    "f": 1.0,
+    "meta": 1550.0,
+    "fijo": null,
+    "quemado": false
+   },
+   "B": {
+    "n": 2,
+    "f": 1.0,
+    "meta": 1550.0,
+    "fijo": null,
+    "quemado": false
+   },
+   "C": {
+    "n": 3,
+    "f": 1.5,
+    "meta": 1550.0,
+    "fijo": -2027.6999999999935,
+    "quemado": true
+   }
+  }
+ }
+}
