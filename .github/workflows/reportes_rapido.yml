@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  año:
+  anio:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -24,7 +24,7 @@ jobs:
           name: rep-${{ matrix.y }}
           path: reportes_gigantes_${{ matrix.y }}.csv
   juntar:
-    needs: año
+    needs: anio
     if: always()
     runs-on: ubuntu-latest
     steps:
