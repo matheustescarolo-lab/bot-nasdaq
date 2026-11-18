@@ -48,7 +48,7 @@ jobs:
             mnq: '4'
             instalador: https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe
           - cuenta: ftmo
-            mnq: '6'
+            mnq: '12'          # reto agresivo: 8 años → pasa ~30% pero se decide en ~2.5 semanas; máximo neto a 12 meses (meseta 10–15)
             instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
