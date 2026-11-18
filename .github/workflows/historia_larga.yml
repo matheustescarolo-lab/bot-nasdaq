@@ -1,0 +1,46 @@
+name: Historia larga del Nasdaq (Dukascopy)
+
+# Baja varios años de velas de 5 min del Nasdaq-100 (USATECHIDXUSD) desde Dukascopy. No opera.
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: 'Fecha inicial (AAAA-MM-DD)'
+        default: '2019-01-01'
+
+permissions:
+  contents: write
+
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Bajar velas de 5 min por año
+        run: |
+          mkdir -p datos
+          inicio=$(echo "${{ inputs.desde }}" | cut -c1-4)
+          fin=$(date -u +%Y)
+          for y in $(seq $inicio $fin); do
+            hasta="$((y+1))-01-01"
+            [ "$y" = "$fin" ] && hasta=$(date -u +%Y-%m-%d)
+            npx --yes dukascopy-node@latest -i usatechidxusd -from ${y}-01-01 -to $hasta -t m5 -f csv -v true -dir datos -fn nas_$y -bs 15 -bp 300 -r 3 || echo "fallo el año $y"
+          done
+          ls -la datos
+      - name: Convertir a hora de Nueva York
+        run: |
+          python -m pip install -q pandas
+          python convertir_dukascopy.py
+      - name: Guardar
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          git add historia_nas_dukascopy.csv
+          git diff --cached --quiet || (git commit -m "Historia larga Nasdaq 5 min (Dukascopy)" && git pull -q --rebase && git push)
