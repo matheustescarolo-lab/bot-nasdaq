@@ -1,0 +1,36 @@
+name: Datos extra para el laboratorio (Dukascopy)
+
+# Baja datos de contexto para el laboratorio: Nasdaq las 24 h (sesión nocturna), S&P 500, VIX, dólar y bonos. No opera.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Bajar
+        run: |
+          mkdir -p extra
+          hoy=$(date -u +%Y-%m-%d)
+          for i in usa500idxusd volidxusd dollaridxusd ustbondtrusd usatechidxusd; do
+            npx --yes dukascopy-node@latest -i $i -from 2018-12-01 -to $hoy -t d1 -f csv -v true -dir extra -fn ${i}_d1 -r 3 || echo "fallo $i"
+          done
+          for y in 2019 2020 2021 2022 2023 2024 2025 2026; do
+            hasta="$((y+1))-01-01"; [ "$y" = "2026" ] && hasta=$hoy
+            npx --yes dukascopy-node@latest -i usatechidxusd -from ${y}-01-01 -to $hasta -t h1 -f csv -v true -dir extra -fn nas_h1_$y -r 3 || echo "fallo h1 $y"
+          done
+          ls -la extra
+      - name: Guardar
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          git add extra
+          git diff --cached --quiet || (git commit -m "Datos extra del laboratorio" && git pull -q --rebase && git push)
