@@ -1,0 +1,20 @@
+name: Contexto diario (prueba)
+
+# Prueba suelta del contexto diario (no opera). El bot lo corre solo antes de cada tramo.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  contexto:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python contexto.py
+      - run: cat contexto/hoy.json
