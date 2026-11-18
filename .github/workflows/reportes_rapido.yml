@@ -1,0 +1,42 @@
+name: Reportes historicos rapido (por año)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  año:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        y: [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python reportes_historicos.py ${{ matrix.y }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rep-${{ matrix.y }}
+          path: reportes_gigantes_${{ matrix.y }}.csv
+  juntar:
+    needs: año
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: partes
+      - run: |
+          head -1 $(ls partes/*/*.csv | head -1) > reportes_gigantes.csv
+          for f in partes/*/*.csv; do tail -n +2 $f >> reportes_gigantes.csv; done
+          wc -l reportes_gigantes.csv
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          git add reportes_gigantes.csv
+          git diff --cached --quiet || (git commit -m "Reportes historicos de los gigantes" && git pull -q --rebase && git push)
