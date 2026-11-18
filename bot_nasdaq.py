@@ -20,7 +20,10 @@ NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
 SIMBOLOS = ['USTEC', 'NAS100', 'US100', 'USTECH', 'NDX100']
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
-CONTRATOS = int(os.environ.get('BOT_MNQ', '6'))                 # MNQ por estrategia
+CONTRATOS = int(os.environ.get('BOT_MNQ', '4'))                 # MNQ por estrategia que opera la demo (= versión B)
+# 3 versiones del examen en paralelo con los mismos trades (escaladas): A 3 MNQ, B 4 MNQ, C 6 MNQ. La demo opera B y solo cierra
+# todo cuando las 3 terminaron su día (meta o quemado). Simulación 8 años: B la más robusta; ver claude/mnq-lucid.md.
+VERSIONES = {'A': 3, 'B': 4, 'C': 6}
 META_DIARIA = float(os.environ.get('BOT_META_DIARIA', '1550'))   # al ganar esto en el día, cierra todo y para hasta mañana
 EXAMEN_META, EXAMEN_MLL, EXAMEN_BLOQUEO = 3000.0, 2000.0, 2100.0  # reglas de Lucid Flex 50K
 ESTADO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estado_nasdaq.json')
@@ -152,17 +155,16 @@ def guardar_estado(e):
         json.dump(e, fh, ensure_ascii=False, indent=1)
 
 
-def examen_nuevo(e, equity, hoy):
-    n = e.get('examen', {}).get('n', 0) + 1
-    e['examen'] = dict(n=n, inicio=str(hoy), base=equity, alto=0.0, mll=-EXAMEN_MLL, bloq=False, mejor_dia=0.0, dias=0)
+def examen_nuevo(e, v, hoy, n_prev=0):
+    e.setdefault('versiones', {})[v] = dict(n=n_prev + 1, inicio=str(hoy), saldo=0.0, alto=0.0, mll=-EXAMEN_MLL, bloq=False, mejor_dia=0.0, dias=0)
 
 
-def meta_del_dia(x, d):
+def meta_del_dia(bal):
     """Meta del día = lo justo que falta para +3,000, sin que el día pase de 50% (consistencia) y con tope META_DIARIA.
     8 años: pasa 22%→25% por intento (en las dos mitades), misma velocidad."""
     if not META_DIARIA:
         return 0
-    bal = d['eq_inicio'] - x['base']; falta = EXAMEN_META - bal
+    falta = EXAMEN_META - bal
     if bal > 0 and falta + 50 <= bal:
         meta = min(META_DIARIA, falta + 50)
     elif bal > 0:
@@ -363,34 +365,37 @@ def resumen(sym, hoy):
 
 
 def cerrar_dia_examen(equity, hoy):
-    """Aplica las reglas del examen de Lucid al cierre del día y devuelve las líneas para el resumen."""
-    e = leer_estado(); x = e.get('examen'); d = e.get('dia', {})
-    if not x:
+    """Aplica las reglas del examen de Lucid al cierre del día a las 3 versiones y devuelve las líneas para el resumen."""
+    e = leer_estado(); d = e.get('dia', {}); V = e.get('versiones', {})
+    if not V or 'v' not in d:
         return []
-    r = equity - d.get('eq_inicio', equity)
-    bal = equity - x['base']
+    R = equity - d.get('eq_inicio', equity)
     L = []
-    if d.get('quemado'):
-        e.setdefault('historial', []).append(dict(n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'] + 1, resultado='quemado'))
-        L.append(f"🔥 Examen #{x['n']} QUEMADO hoy (tocó el límite de pérdida) tras {x['dias'] + 1} días. Mañana arranca el #{x['n'] + 1}.")
-        examen_nuevo(e, equity, hoy)
-    else:
-        x['dias'] += 1; x['mejor_dia'] = max(x['mejor_dia'], r)
+    for v, base in VERSIONES.items():
+        x, s = V[v], d['v'][v]
+        r = s['fijo'] if s['fijo'] is not None else R * s['f']
+        tag = f"{v} (base {base}, hoy {s['n']} MNQ)"
+        if s['quemado']:
+            e.setdefault('historial', []).append(dict(version=v, n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'] + 1, resultado='quemado'))
+            L.append(f"🔥 {tag}: examen #{x['n']} QUEMADO hoy ({r:+,.0f}) tras {x['dias'] + 1} días. Mañana arranca el #{x['n'] + 1}.")
+            examen_nuevo(e, v, hoy, x['n'])
+            continue
+        x['saldo'] += r; x['dias'] += 1; x['mejor_dia'] = max(x['mejor_dia'], r); bal = x['saldo']
         if not x['bloq']:
             x['alto'] = max(x['alto'], bal); x['mll'] = x['alto'] - EXAMEN_MLL
             if bal > EXAMEN_BLOQUEO:
                 x['mll'] = 100.0; x['bloq'] = True
         if bal >= EXAMEN_META and x['mejor_dia'] <= 0.5 * bal:
-            e.setdefault('historial', []).append(dict(n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'], resultado='aprobado'))
-            L.append(f"🏆 Examen #{x['n']} APROBADO en {x['dias']} días (+${bal:,.0f}). Mañana arranca el #{x['n'] + 1} para seguir midiendo.")
-            examen_nuevo(e, equity, hoy)
+            e.setdefault('historial', []).append(dict(version=v, n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'], resultado='aprobado'))
+            L.append(f"🏆 {tag}: examen #{x['n']} APROBADO en {x['dias']} días (+${bal:,.0f}). Mañana arranca el #{x['n'] + 1}.")
+            examen_nuevo(e, v, hoy, x['n'])
         else:
-            falta = '' if bal < EXAMEN_META else ' (ya pasó la meta, pero un día pesa más del 50%: sigue operando)'
-            L.append(f"🎯 Examen #{x['n']} · día {x['dias']} · lleva {bal:+,.0f} de +3,000{falta} · margen antes de quemarse ${bal - x['mll']:,.0f} · mejor día ${x['mejor_dia']:,.0f}")
+            falta = '' if bal < EXAMEN_META else ' (pasó la meta, pero un día pesa más del 50%)'
+            L.append(f"🎯 {tag}: examen #{x['n']} · día {x['dias']} · hoy {r:+,.0f} · lleva {bal:+,.0f} de +3,000{falta} · margen ${bal - x['mll']:,.0f}")
     h = e.get('historial', [])
     if h:
-        ap = [z for z in h if z['resultado'] == 'aprobado']
-        L.append(f"📈 Exámenes simulados: {len(ap)} aprobados de {len(h)} terminados")
+        L.append('📈 Exámenes terminados: ' + ' · '.join(
+            f"{v}: {sum(1 for z in h if z.get('version') == v and z['resultado'] == 'aprobado')} aprobados de {sum(1 for z in h if z.get('version') == v)}" for v in VERSIONES))
     guardar_estado(e)
     return L
 
@@ -485,14 +490,22 @@ def main():
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
     est = leer_estado()
-    if 'examen' not in est:
-        examen_nuevo(est, acc.equity, hoy)
-    if est.get('dia', {}).get('fecha') != str(hoy):
-        est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, quemado=False)
+    est.pop('examen', None)
+    for v in VERSIONES:
+        if v not in est.get('versiones', {}):
+            examen_nuevo(est, v, hoy)
+    if est.get('dia', {}).get('fecha') != str(hoy) or 'v' not in est.get('dia', {}):
+        vs = {}
+        for v, base in VERSIONES.items():
+            n_v = max(1, round(base * peso))
+            if r9 and r9 > MIEDO_CORTO:
+                n_v = max(1, round(n_v * 0.5))
+            vs[v] = dict(n=n_v, f=n_v / n_mnq, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
+        est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, v=vs)
     guardar_estado(est)
-    meta_hoy = meta_del_dia(est['examen'], est['dia'])
+    meta_txt = ' · '.join(f"{v} {s['n']} MNQ meta +{s['meta']:,.0f}" for v, s in est['dia']['v'].items())
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
-                          f'modo examen #{est["examen"]["n"]} (meta del día +{meta_hoy:,.0f}) · '
+                          f'3 versiones del examen ({meta_txt}) · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
     if CONTEXTO:
         m = CONTEXTO.get('marcas', {})
@@ -518,20 +531,26 @@ def main():
             if not conectado():
                 raise RuntimeError(f'sin conexión con MT5 ({mt5.last_error()})')
             eq = mt5.account_info().equity
-            d, x = est['dia'], est['examen']
+            d = est['dia']
             if eq < d['min_eq']:
                 d['min_eq'] = eq
-            if not d['cerrado'] and eq - x['base'] <= x['mll']:
+            R = eq - d['eq_inicio']
+            for v, s in d['v'].items():
+                if s['fijo'] is not None:
+                    continue
+                x, p = est['versiones'][v], R * s['f']
+                if x['saldo'] + p <= x['mll']:
+                    s['fijo'], s['quemado'] = p, True
+                    log('examen', detalle=f"versión {v} ({s['n']} MNQ): examen #{x['n']} quemado ({p:+,.0f} hoy, saldo {x['saldo'] + p:+,.0f})")
+                    guardar_estado(est)
+                elif p >= s['meta']:
+                    s['fijo'] = p
+                    log('meta', detalle=f"versión {v} ({s['n']} MNQ): meta del día +{s['meta']:,.0f} alcanzada ({p:+,.0f})")
+                    guardar_estado(est)
+            if not d['cerrado'] and all(s['fijo'] is not None for s in d['v'].values()):
                 for clave in MAGIC:
-                    cerrar(sym, clave, 'EXAMEN QUEMADO: tocó el límite de pérdida')
-                d['cerrado'] = d['quemado'] = True
-                log('examen', detalle=f"examen #{x['n']} quemado: equity {eq:,.2f} · límite {x['base'] + x['mll']:,.2f}")
-                guardar_estado(est)
-            elif not d['cerrado'] and meta_hoy and eq - d['eq_inicio'] >= meta_hoy:
-                for clave in MAGIC:
-                    cerrar(sym, clave, f'meta diaria alcanzada (+{eq - d["eq_inicio"]:,.0f} USD)')
+                    cerrar(sym, clave, 'las 3 versiones terminaron su día (meta o quemado)')
                 d['cerrado'] = True
-                log('meta', detalle=f'meta diaria: +{eq - d["eq_inicio"]:,.2f} USD · no opera más hoy')
                 guardar_estado(est)
             df = velas(sym)
             if df is not None and not d['cerrado']:
