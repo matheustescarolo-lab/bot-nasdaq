@@ -148,6 +148,21 @@ def leer_contexto(hoy):
         return {}
 
 
+def factor_evento():
+    """Ajustes de tamaño por eventos del contexto: (factor para las dos estrategias, ¿es día de NFP?, motivos)."""
+    if not CONTEXTO:
+        return 1.0, False, []
+    m = CONTEXTO.get('marcas') or {}
+    f, mot = 1.0, []
+    ayer = [r['simbolo'] for r in (CONTEXTO.get('reportes_ayer') or []) if 'pre' not in (r.get('hora') or '').lower()]
+    hoy_antes = [r['simbolo'] for r in (CONTEXTO.get('reportes_hoy') or []) if 'pre' in (r.get('hora') or '').lower() or r.get('simbolo') == 'ASML']
+    if ayer or hoy_antes:
+        f *= EVENTO_GIGANTES; mot.append(f"reporte de gigantes ({', '.join(ayer + hoy_antes)})")
+    if m.get('fondos_semana') == 'recortaron fuerte':
+        f *= COT_RECORTE; mot.append('fondos apalancados recortaron fuerte (COT)')
+    return f, bool(m.get('empleo_nfp')), mot
+
+
 def leer_estado():
     try:
         with open(ESTADO, encoding='utf-8') as fh:
@@ -254,6 +269,8 @@ def abrir(sym, clave, lado, lotes, sl, motivo):
 
 # ===== Lógica del día =====
 def sincronizar(sym, df, hoy, ahora, lotes):
+    if not isinstance(lotes, dict):
+        lotes = {'orb': lotes, 'ruido': lotes}
     hoy_df, previos = partir_dias(df, hoy)
     if len(hoy_df) == 0 or hoy_df.index[0].time() > T('09:35'):
         return
@@ -264,7 +281,7 @@ def sincronizar(sym, df, hoy, ahora, lotes):
         lado_m, est = modelo_orb(hoy_df, hi, lo)
         lado_r, _ = posicion(sym, 'orb')
         if est == 'activo' and lado_r == 0 and not opero_hoy('orb', hoy):
-            abrir(sym, 'orb', lado_m, lotes, lo if lado_m > 0 else hi,
+            abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
                   f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f})')
         elif lado_r != 0 and (est == 'stop' or lado_m != lado_r):
             cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
@@ -281,7 +298,7 @@ def sincronizar(sym, df, hoy, ahora, lotes):
             cerrar(sym, 'ruido', 'salió de la zona · ' + info)
         if pos_m != 0:
             precio = mt5.symbol_info_tick(sym).ask if pos_m > 0 else mt5.symbol_info_tick(sym).bid
-            abrir(sym, 'ruido', pos_m, lotes, precio * (1 - STOP_EMERGENCIA * pos_m), 'cerró fuera de la zona de ruido · ' + info)
+            abrir(sym, 'ruido', pos_m, lotes['ruido'], precio * (1 - STOP_EMERGENCIA * pos_m), 'cerró fuera de la zona de ruido · ' + info)
 
 
 def proteger(sym, df):
@@ -321,6 +338,10 @@ def proteger(sym, df):
 
 
 SACUDIDA = 0.006   # rango 30 min: si una vela de 5 min se mueve más de 0.6% EN CONTRA, sale al cierre de esa vela (8 años: Sharpe 1.24→1.35)
+EVENTO_GIGANTES = 1.5    # día después de reporte de un gigante del Nasdaq (o antes de abrir): +$259/día vs +$112 normal (t 2.0)
+COT_RECORTE = 0.5        # semana en que los fondos apalancados recortan fuerte (COT): el bot gana mucho menos (t≈2.5)
+NFP_RUIDO = 1.5          # día de empleo (NFP): la zona de ruido gana 63% (+$38.9/trade vs $10.2)
+# Juntas (8 años): $32.2→$37.9/día, Sharpe 1.59→1.75; reto FTMO 12 MNQ: promedio 12 m $26.4k→$29.2k, peor 10% $1.5k→$5.9k
 MIEDO_CORTO = 1.10   # VIX9D/VIX al cierre de ayer: arriba de esto, medio tamaño (8 años: esos días −$40/día vs +$35, t −2.4; Sharpe 1.50→1.57)
 
 
@@ -533,10 +554,20 @@ def main():
     if r9 and r9 > MIEDO_CORTO:
         n_mnq = max(1, round(n_mnq * 0.5))
         log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → medio tamaño: {n_mnq} MNQ')
+    f_ev, nfp, motivos = factor_evento()
+    if f_ev != 1.0:
+        n_mnq = max(1, round(n_mnq * f_ev))
+        log('tamaño', detalle=f"{' y '.join(motivos)} → ×{f_ev:g}: {n_mnq} MNQ")
     lotes = round(round(lotes_por_mnq(info) * n_mnq / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
     if info.volume_max and lotes > info.volume_max:
         log('aviso', detalle=f'{lotes} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
         lotes = float(info.volume_max)
+    lotes_ruido = lotes
+    if nfp:
+        lotes_ruido = round(round(lotes * NFP_RUIDO / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+        if info.volume_max:
+            lotes_ruido = min(lotes_ruido, float(info.volume_max))
+        log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g} → {lotes_ruido:g} lotes')
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
     est = leer_estado()
@@ -548,7 +579,7 @@ def main():
             est['dia'] = ftmo_dia(est, acc.equity, hoy)
         if est['ftmo']['listo']:
             n_mnq = 1
-            lotes = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+            lotes = lotes_ruido = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
         guardar_estado(est)
         dd = est['dia']
         meta_txt = f"FTMO fase {est['ftmo']['fase']} · meta del día +{dd['meta']:,.0f} · freno en equity {dd['piso'] + FTMO_FRENO * FTMO_INICIAL:,.0f}"
@@ -561,6 +592,7 @@ def main():
             n_v = max(1, round(base * peso))
             if r9 and r9 > MIEDO_CORTO:
                 n_v = max(1, round(n_v * 0.5))
+            n_v = max(1, round(n_v * f_ev))
             vs[v] = dict(n=n_v, f=n_v / n_mnq, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
         est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, v=vs)
     guardar_estado(est)
@@ -629,7 +661,7 @@ def main():
                 guardar_estado(est)
             df = velas(sym)
             if df is not None and not d['cerrado']:
-                sincronizar(sym, df, hoy, ahora, lotes)
+                sincronizar(sym, df, hoy, ahora, {'orb': lotes, 'ruido': lotes_ruido})
                 sacudida(sym, df, hoy)
                 proteger(sym, df)
             errores = 0
