@@ -84,5 +84,5 @@ jobs:
         run: |
           git config user.name "bot-nasdaq"
           git config user.email "bot-nasdaq@users.noreply.github.com"
-          if [ -f bitacora_nasdaq.csv ]; then git add bitacora_nasdaq.csv; fi
-          git diff --cached --quiet || (git commit -m "Bitacora Nasdaq $(date -u +%Y-%m-%d)" && git pull -q --rebase && git push)
+          for f in bitacora_nasdaq.csv estado_nasdaq.json; do if [ -f $f ]; then git add $f; fi; done
+          git diff --cached --quiet || (git commit -m "Bitacora y estado Nasdaq $(date -u +%Y-%m-%d)" && git pull -q --rebase && git push)

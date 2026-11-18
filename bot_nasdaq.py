@@ -19,6 +19,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
 SIMBOLOS = ['USTEC', 'NAS100', 'US100', 'USTECH', 'NDX100']
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
+# ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
+CONTRATOS = int(os.environ.get('BOT_MNQ', '6'))                 # MNQ por estrategia
+META_DIARIA = float(os.environ.get('BOT_META_DIARIA', '1550'))   # al ganar esto en el día, cierra todo y para hasta mañana
+EXAMEN_META, EXAMEN_MLL, EXAMEN_BLOQUEO = 3000.0, 2000.0, 2100.0  # reglas de Lucid Flex 50K
+ESTADO = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estado_nasdaq.json')
 MAGIC = {'orb': 301, 'ruido': 302}
 NOMBRE = {'orb': 'Rango 30 min', 'ruido': 'Zona de ruido'}
 STOP_EMERGENCIA = 0.025          # zona de ruido: stop en el servidor a 2.5% en contra (por si el bot se cae con la posición abierta)
@@ -102,6 +107,24 @@ def partir_dias(df, hoy):
     dias = {d: g for d, g in df.groupby(df.index.date)}
     previos = [g for d, g in sorted(dias.items()) if d < hoy and str(d) not in FERIADOS and len(g) >= VELAS_DIA_MIN]
     return dias.get(hoy, df.iloc[0:0]), previos
+
+
+def leer_estado():
+    try:
+        with open(ESTADO, encoding='utf-8') as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def guardar_estado(e):
+    with open(ESTADO, 'w', encoding='utf-8') as fh:
+        json.dump(e, fh, ensure_ascii=False, indent=1)
+
+
+def examen_nuevo(e, equity, hoy):
+    n = e.get('examen', {}).get('n', 0) + 1
+    e['examen'] = dict(n=n, inicio=str(hoy), base=equity, alto=0.0, mll=-EXAMEN_MLL, bloq=False, mejor_dia=0.0, dias=0)
 
 
 def lotes_por_mnq(info):
@@ -262,7 +285,8 @@ def resumen(sym, hoy):
         n = sum(1 for d in mios if d.entry == mt5.DEAL_ENTRY_IN)
         total += pnl
         L.append(f"• {NOMBRE[clave]}: {'sin operaciones' if n == 0 else f'{n} operación(es) · {pnl:+,.2f} USD'}")
-    L.append(f'🧮 Total del día: {total:+,.2f} USD (1 MNQ por estrategia)')
+    L.append(f'🧮 Total del día: {total:+,.2f} USD ({CONTRATOS} MNQ por estrategia)')
+    L += cerrar_dia_examen(acc.equity, hoy)
     errores = 0
     try:
         with open(os.path.join(HERE, 'bitacora_nasdaq.csv'), encoding='utf-8') as fh:
@@ -273,6 +297,39 @@ def resumen(sym, hoy):
     texto = '\n'.join(L)
     log('resumen', detalle=texto.replace('\n', ' | '))
     publicar(texto)
+
+
+def cerrar_dia_examen(equity, hoy):
+    """Aplica las reglas del examen de Lucid al cierre del día y devuelve las líneas para el resumen."""
+    e = leer_estado(); x = e.get('examen'); d = e.get('dia', {})
+    if not x:
+        return []
+    r = equity - d.get('eq_inicio', equity)
+    bal = equity - x['base']
+    L = []
+    if d.get('quemado'):
+        e.setdefault('historial', []).append(dict(n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'] + 1, resultado='quemado'))
+        L.append(f"🔥 Examen #{x['n']} QUEMADO hoy (tocó el límite de pérdida) tras {x['dias'] + 1} días. Mañana arranca el #{x['n'] + 1}.")
+        examen_nuevo(e, equity, hoy)
+    else:
+        x['dias'] += 1; x['mejor_dia'] = max(x['mejor_dia'], r)
+        if not x['bloq']:
+            x['alto'] = max(x['alto'], bal); x['mll'] = x['alto'] - EXAMEN_MLL
+            if bal > EXAMEN_BLOQUEO:
+                x['mll'] = 100.0; x['bloq'] = True
+        if bal >= EXAMEN_META and x['mejor_dia'] <= 0.5 * bal:
+            e.setdefault('historial', []).append(dict(n=x['n'], inicio=x['inicio'], fin=str(hoy), dias=x['dias'], resultado='aprobado'))
+            L.append(f"🏆 Examen #{x['n']} APROBADO en {x['dias']} días (+${bal:,.0f}). Mañana arranca el #{x['n'] + 1} para seguir midiendo.")
+            examen_nuevo(e, equity, hoy)
+        else:
+            falta = '' if bal < EXAMEN_META else ' (ya pasó la meta, pero un día pesa más del 50%: sigue operando)'
+            L.append(f"🎯 Examen #{x['n']} · día {x['dias']} · lleva {bal:+,.0f} de +3,000{falta} · margen antes de quemarse ${bal - x['mll']:,.0f} · mejor día ${x['mejor_dia']:,.0f}")
+    h = e.get('historial', [])
+    if h:
+        ap = [z for z in h if z['resultado'] == 'aprobado']
+        L.append(f"📈 Exámenes simulados: {len(ap)} aprobados de {len(h)} terminados")
+    guardar_estado(e)
+    return L
 
 
 def publicar(texto):
@@ -353,8 +410,16 @@ def main():
     if sym is None:
         log('error', detalle='no encontré el Nasdaq-100 (USTEC) en MT5'); sys.exit(1)
     calcular_desfase(sym)
-    lotes = lotes_por_mnq(mt5.symbol_info(sym))
-    log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈1 MNQ) · equity {acc.equity:,.2f} · '
+    info = mt5.symbol_info(sym)
+    lotes = round(round(lotes_por_mnq(info) * CONTRATOS / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+    est = leer_estado()
+    if 'examen' not in est:
+        examen_nuevo(est, acc.equity, hoy)
+    if est.get('dia', {}).get('fecha') != str(hoy):
+        est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, quemado=False)
+    guardar_estado(est)
+    log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{CONTRATOS} MNQ) · equity {acc.equity:,.2f} · '
+                          f'modo examen #{est["examen"]["n"]} (meta diaria +{META_DIARIA:,.0f}) · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
     cerrar_viejas(sym, hoy)
     errores = 0
@@ -363,16 +428,34 @@ def main():
         if ahora.time() >= cierre:
             for clave in MAGIC:
                 cerrar(sym, clave, f'cierre del día ({cierre:%H:%M} NY)')
+            guardar_estado(est)
             resumen(sym, hoy)
             break
         if ahora.time() >= hasta:
+            guardar_estado(est)
             log('fin', detalle=f'termina el tramo de la {tramo}; el de la tarde sigue con las posiciones abiertas')
             break
         try:
             if not conectado():
                 raise RuntimeError(f'sin conexión con MT5 ({mt5.last_error()})')
+            eq = mt5.account_info().equity
+            d, x = est['dia'], est['examen']
+            if eq < d['min_eq']:
+                d['min_eq'] = eq
+            if not d['cerrado'] and eq - x['base'] <= x['mll']:
+                for clave in MAGIC:
+                    cerrar(sym, clave, 'EXAMEN QUEMADO: tocó el límite de pérdida')
+                d['cerrado'] = d['quemado'] = True
+                log('examen', detalle=f"examen #{x['n']} quemado: equity {eq:,.2f} · límite {x['base'] + x['mll']:,.2f}")
+                guardar_estado(est)
+            elif not d['cerrado'] and META_DIARIA and eq - d['eq_inicio'] >= META_DIARIA:
+                for clave in MAGIC:
+                    cerrar(sym, clave, f'meta diaria alcanzada (+{eq - d["eq_inicio"]:,.0f} USD)')
+                d['cerrado'] = True
+                log('meta', detalle=f'meta diaria: +{eq - d["eq_inicio"]:,.2f} USD · no opera más hoy')
+                guardar_estado(est)
             df = velas(sym)
-            if df is not None:
+            if df is not None and not d['cerrado']:
                 sincronizar(sym, df, hoy, ahora, lotes)
                 proteger(sym, df)
             errores = 0
