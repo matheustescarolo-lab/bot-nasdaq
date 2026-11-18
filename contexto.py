@@ -49,9 +49,16 @@ def reportes(fecha):
 
 
 def yahoo(sym):
+    """Último precio contra el cierre de la sesión anterior (no contra el de hace 5 días)."""
     d = json.loads(bajar(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=5d&interval=1d'))
-    m = d['chart']['result'][0]['meta']
-    precio, prev = m.get('regularMarketPrice'), m.get('chartPreviousClose') or m.get('previousClose')
+    r = d['chart']['result'][0]; m = r['meta']
+    cierres = [x for x in (r.get('indicators', {}).get('quote', [{}])[0].get('close') or []) if x is not None]
+    precio = m.get('regularMarketPrice')
+    dias = [dt.datetime.fromtimestamp(t, NY).date() for t in (r.get('timestamp') or [])][:len(cierres)]
+    hoy = dt.datetime.now(NY).date()
+    prev = None
+    if cierres:                                   # si la última vela es de hoy, el cierre anterior es la penúltima
+        prev = cierres[-2] if (dias and dias[-1] >= hoy and len(cierres) > 1) else cierres[-1]
     return dict(precio=precio, cierre_anterior=prev, cambio=(precio / prev - 1) if precio and prev else None)
 
 
