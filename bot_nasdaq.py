@@ -415,6 +415,9 @@ NFP_RUIDO = 1.5          # día de empleo (NFP): la zona de ruido gana 63% (+$38
 CAIDA_RUIDO, CAIDA_ORB = -0.010, -0.020   # si ayer el Nasdaq cayó más que esto (cierre a cierre), no opera esa estrategia hoy
 # 8 años, costos realistas: ayer < −1% → ruido −$17.5/trade; ayer < −2% → ORB −$16.9 y ruido −$40.4 (las dos mitades).
 # Regla: $35.0→$37.4/día, Sharpe 1.62→1.80 (1.67/1.98); meseta entre −1% y −2%.
+CIERRE_FUERTE, CIERRE_DEBIL = 0.8, 0.2     # zona de ruido: ×1.5 si ayer cerró en el 20% alto de su rango, ×0.5 si en el 20% bajo
+# 8 años (ruido $/trade por posición del cierre de ayer: −2.6, 3.6, 8.0, 12.3, 20.7 — escalonado). Sobre todo lo anterior: $37.4→$41.0/día,
+# Sharpe 1.80→1.81, caída −$4,454→−$3,987.
 MIEDO_CORTO = 1.10   # VIX9D/VIX al cierre de ayer: arriba de esto, medio tamaño (8 años: esos días −$40/día vs +$35, t −2.4; Sharpe 1.50→1.57)
 
 
@@ -636,8 +639,19 @@ def main():
         log('aviso', detalle=f'{lotes} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
         lotes = float(info.volume_max)
     lotes_ruido = lotes
+    try:
+        _, prev0 = partir_dias(velas(sym), hoy)
+        ay = prev0[-1]; pos_ayer = (float(ay.c.iloc[-1]) - float(ay.l.min())) / max(float(ay.h.max() - ay.l.min()), 1e-9)
+        f_c = 1.5 if pos_ayer > CIERRE_FUERTE else 0.5 if pos_ayer < CIERRE_DEBIL else 1.0
+        if f_c != 1.0:
+            lotes_ruido = max(info.volume_step or 0.01, round(round(lotes * f_c / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8))
+            if info.volume_max:
+                lotes_ruido = min(lotes_ruido, float(info.volume_max))
+            log('tamaño', detalle=f"ayer cerró en el {pos_ayer:.0%} de su rango → zona de ruido ×{f_c:g}: {lotes_ruido:g} lotes")
+    except Exception as e:
+        log('aviso', detalle=f'no pude revisar el cierre de ayer ({e})')
     if nfp:
-        lotes_ruido = round(round(lotes * NFP_RUIDO / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+        lotes_ruido = round(round(lotes_ruido * NFP_RUIDO / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
         if info.volume_max:
             lotes_ruido = min(lotes_ruido, float(info.volume_max))
         log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g} → {lotes_ruido:g} lotes')
