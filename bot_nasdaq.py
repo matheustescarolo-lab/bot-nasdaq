@@ -310,15 +310,25 @@ def abrir(sym, clave, lado, lotes, sl, motivo):
 
 
 # ===== Lógica del día =====
+def caida_ayer(previos):
+    """Retorno cierre a cierre de ayer (horario normal). None si faltan días."""
+    if len(previos) < 2:
+        return None
+    return float(previos[-1].c.iloc[-1]) / float(previos[-2].c.iloc[-1]) - 1
+
+
 def sincronizar(sym, df, hoy, ahora, lotes):
     if not isinstance(lotes, dict):
         lotes = {'orb': lotes, 'ruido': lotes}
     hoy_df, previos = partir_dias(df, hoy)
     if len(hoy_df) == 0 or hoy_df.index[0].time() > T('09:35'):
         return
+    r1 = caida_ayer(previos)
+    sin_orb = r1 is not None and r1 < CAIDA_ORB
+    sin_ruido = r1 is not None and r1 < CAIDA_RUIDO
     # --- Rango de 30 min ---
     niv = niveles_orb(hoy_df)
-    if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC and not CONTEXTO.get('marcas', {}).get('decision_fed'):
+    if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC and not CONTEXTO.get('marcas', {}).get('decision_fed') and not sin_orb:
         hi, lo = niv
         lado_m, est = modelo_orb(hoy_df, hi, lo)
         lado_r, ps = posicion(sym, 'orb')
@@ -348,7 +358,7 @@ def sincronizar(sym, df, hoy, ahora, lotes):
     # --- Zona de ruido ---
     cierre_ayer = float(previos[-1].c.iloc[-1]) if previos else None
     pos_m, info, ultimo = modelo_ruido(hoy_df, previos, cierre_ayer, ahora)
-    if pos_m is None:
+    if pos_m is None or sin_ruido:
         return
     lado_r, _ = posicion(sym, 'ruido')
     if lado_r == 0 and pos_m != 0 and salio_por_stop('ruido', ultimo):
@@ -402,6 +412,9 @@ EVENTO_GIGANTES = 1.5    # día después de reporte de un gigante del Nasdaq (o 
 COT_RECORTE = 0.5        # semana en que los fondos apalancados recortan fuerte (COT): el bot gana mucho menos (t≈2.5)
 NFP_RUIDO = 1.5          # día de empleo (NFP): la zona de ruido gana 63% (+$38.9/trade vs $10.2)
 # Juntas (8 años): $32.2→$37.9/día, Sharpe 1.59→1.75; reto FTMO 12 MNQ: promedio 12 m $26.4k→$29.2k, peor 10% $1.5k→$5.9k
+CAIDA_RUIDO, CAIDA_ORB = -0.010, -0.020   # si ayer el Nasdaq cayó más que esto (cierre a cierre), no opera esa estrategia hoy
+# 8 años, costos realistas: ayer < −1% → ruido −$17.5/trade; ayer < −2% → ORB −$16.9 y ruido −$40.4 (las dos mitades).
+# Regla: $35.0→$37.4/día, Sharpe 1.62→1.80 (1.67/1.98); meseta entre −1% y −2%.
 MIEDO_CORTO = 1.10   # VIX9D/VIX al cierre de ayer: arriba de esto, medio tamaño (8 años: esos días −$40/día vs +$35, t −2.4; Sharpe 1.50→1.57)
 
 
@@ -661,6 +674,13 @@ def main():
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
                           f'{meta_txt} · '
                           f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
+    try:
+        _, prev0 = partir_dias(velas(sym), hoy)
+        r1 = caida_ayer(prev0)
+        if r1 is not None and r1 < CAIDA_RUIDO:
+            log('filtro', detalle=f'ayer el Nasdaq cerró {r1:+.2%}: hoy no opera la zona de ruido' + (' ni el rango de 30 min' if r1 < CAIDA_ORB else ''))
+    except Exception as e:
+        log('aviso', detalle=f'no pude revisar la caída de ayer ({e})')
     if CONTEXTO:
         m = CONTEXTO.get('marcas', {})
         evs = ', '.join(f"{e['hora_mx']} {e['evento']}" for e in (CONTEXTO.get('calendario') or [])) or 'sin eventos'
