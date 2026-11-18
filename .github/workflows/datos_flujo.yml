@@ -1,0 +1,28 @@
+name: Datos de flujo (laboratorio)
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: DIX y GEX (SqueezeMetrics) + COT Nasdaq (CFTC)
+        run: |
+          mkdir -p extra
+          curl -sSL -A "Mozilla/5.0" -o extra/dix_gex.csv https://squeezemetrics.com/monitor/static/DIX.csv || true
+          head -3 extra/dix_gex.csv; wc -l extra/dix_gex.csv
+          for y in 2019 2020 2021 2022 2023 2024 2025 2026; do
+            curl -sSL -A "Mozilla/5.0" -o /tmp/c.zip https://www.cftc.gov/files/dea/history/fut_fin_txt_$y.zip && unzip -o -q /tmp/c.zip -d /tmp/cot_$y || echo "falla $y"
+          done
+          python3 - <<'PY'
+          import glob, pandas as pd
+          fs = glob.glob('/tmp/cot_*/*.txt')
+          d = pd.concat([pd.read_csv(f, low_memory=False) for f in fs])
+          n = d[d['Market_and_Exchange_Names'].str.contains('NASDAQ-100 Consolidated|NASDAQ MINI', case=False, regex=True)]
+          print(n['Market_and_Exchange_Names'].value_counts())
+          n.to_csv('extra/cot_nasdaq.csv', index=False)
+          PY
+      - run: |
+          git config user.name bot; git config user.email bot@users.noreply.github.com
+          git add extra/dix_gex.csv extra/cot_nasdaq.csv; git commit -m "Datos de flujo: DIX/GEX y COT Nasdaq" && git push || true
