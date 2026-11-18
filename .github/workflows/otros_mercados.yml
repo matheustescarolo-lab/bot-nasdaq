@@ -1,0 +1,45 @@
+name: Otros mercados 5 min + curva VIX (laboratorio)
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  anio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        inst: [usa500idxusd, usa30idxusd, xauusd]
+        y: [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    steps:
+      - uses: actions/setup-node@v5
+        with: {node-version: '20'}
+      - run: |
+          hasta="$((${{ matrix.y }}+1))-01-01"; [ "${{ matrix.y }}" = "$(date -u +%Y)" ] && hasta=$(date -u +%Y-%m-%d)
+          npx --yes dukascopy-node@latest -i ${{ matrix.inst }} -from ${{ matrix.y }}-01-01 -to $hasta -t m5 -f csv -v true -dir d -fn ${{ matrix.inst }}_${{ matrix.y }} -bs 15 -bp 300 -r 3
+      - uses: actions/upload-artifact@v4
+        with: {name: '${{ matrix.inst }}_${{ matrix.y }}', path: d}
+  juntar:
+    needs: anio
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {path: crudo}
+      - run: |
+          pip install -q pandas
+          mkdir -p extra
+          for i in usa500idxusd usa30idxusd xauusd; do mkdir -p t_$i; cp -r crudo/${i}_* t_$i/ 2>/dev/null; python convertir_generico.py t_$i extra/m5_$i.csv || true; done
+          python - <<'PY'
+          import json, urllib.request, urllib.parse, pandas as pd
+          out = {}
+          for s in ('^VIX', '^VIX3M', '^VIX9D'):
+              u = f'https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(s)}?period1=1514764800&period2=9999999999&interval=1d'
+              j = json.load(urllib.request.urlopen(urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})))['chart']['result'][0]
+              out[s] = pd.Series(j['indicators']['quote'][0]['close'], index=pd.to_datetime(j['timestamp'], unit='s').normalize())
+          d = pd.DataFrame(out); d.index.name = 'fecha'; d.to_csv('extra/vix_curva.csv'); print(d.tail(3), len(d))
+          PY
+      - run: |
+          git config user.name bot; git config user.email bot@users.noreply.github.com
+          git add extra/m5_*.csv extra/vix_curva.csv convertir_generico.py; git commit -m "Laboratorio: S&P, Dow y oro 5 min + curva VIX" && git pull -q --rebase && git push || true
