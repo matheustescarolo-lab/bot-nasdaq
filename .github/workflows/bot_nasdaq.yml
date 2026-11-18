@@ -19,7 +19,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  contexto:
+    # nasdaq.com bloquea a los servidores Windows de GitHub (403): el contexto se baja aquí, en Linux, y se pasa al bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - run: python3 contexto.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: contexto
+          path: contexto/
+
   operar:
+    needs: contexto
+    if: always()
     runs-on: windows-latest
     timeout-minutes: 240
     steps:
@@ -67,10 +84,20 @@ jobs:
           Start-Sleep -Seconds 60
           Remove-Item $ini -Force
 
-      - name: Bajar el contexto del dia (calendario, reportes, futuros, VIX, titulares)
+      - name: Traer el contexto bajado en Linux
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: contexto
+          path: ctx_linux
+
+      - name: Usar ese contexto (si no llegó, bajarlo aquí)
         continue-on-error: true
         timeout-minutes: 3
-        run: python contexto.py
+        shell: pwsh
+        run: |
+          if (Test-Path ctx_linux/hoy.json) { Copy-Item ctx_linux/* contexto/ -Force; Write-Host 'Contexto de Linux'; Get-Content contexto/hoy.json -TotalCount 3 }
+          else { python contexto.py }
 
       - name: Correr el bot (un tramo del dia)
         env:
