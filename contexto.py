@@ -67,6 +67,23 @@ def titulares(n=8):
     return [i.findtext('title') for i in raiz.iter('item')][:n]
 
 
+PALABRAS_MERCADO = re.compile(r'tariff|arancel|china|fed\b|powell|rate|interest|market|stock|trade deal|deal|sanction|nvidia|apple|chip|semiconductor|tax|dollar|oil|war|iran|russia', re.I)
+
+
+def trump(n=20):
+    """Últimos posts de Trump en Truth Social (archivo público trumpstruth.org; si falla, la API de Truth Social)."""
+    try:
+        raiz = ET.fromstring(bajar('https://trumpstruth.org/feed'))
+        posts = [dict(hora=i.findtext('pubDate'), texto=re.sub(r'<[^>]+>', ' ', i.findtext('description') or i.findtext('title') or '').strip()[:400],
+                      enlace=i.findtext('link')) for i in raiz.iter('item')][:n]
+    except Exception:
+        datos = json.loads(bajar('https://truthsocial.com/api/v1/accounts/107780257626128497/statuses?limit=20&exclude_replies=true'))
+        posts = [dict(hora=x.get('created_at'), texto=re.sub(r'<[^>]+>', ' ', x.get('content') or '').strip()[:400], enlace=x.get('url')) for x in datos][:n]
+    for p in posts:
+        p['habla_de_mercado'] = bool(PALABRAS_MERCADO.search(p['texto']))
+    return posts
+
+
 def anterior_habil(d):
     d -= dt.timedelta(days=1)
     while d.weekday() >= 5:
@@ -78,7 +95,7 @@ def main():
     ahora = dt.datetime.now(NY); hoy = ahora.date(); ayer = anterior_habil(hoy)
     c = dict(fecha=str(hoy), generado_ny=ahora.strftime('%Y-%m-%d %H:%M'), errores={})
     for clave, fn in [('calendario', lambda: calendario(hoy)), ('reportes_ayer', lambda: reportes(ayer)),
-                      ('reportes_hoy', lambda: reportes(hoy)), ('titulares', titulares),
+                      ('reportes_hoy', lambda: reportes(hoy)), ('titulares', titulares), ('trump', trump),
                       ('nasdaq_futuro', lambda: yahoo('NQ=F')), ('sp_futuro', lambda: yahoo('ES=F')), ('vix', lambda: yahoo('%5EVIX'))]:
         try:
             c[clave] = fn()
@@ -95,7 +112,8 @@ def main():
         gigantes_reportan_hoy_antes=[r['simbolo'] for r in (c.get('reportes_hoy') or []) if 'pre' in (r.get('hora') or '').lower()],
         gigantes_reportan_hoy_tras_cierre=[r['simbolo'] for r in (c.get('reportes_hoy') or []) if 'after' in (r.get('hora') or '').lower()],
         gap_nasdaq_futuro=(c.get('nasdaq_futuro') or {}).get('cambio'),
-        vix=(c.get('vix') or {}).get('precio'))
+        vix=(c.get('vix') or {}).get('precio'),
+        trump_posts_de_mercado=sum(1 for p in (c.get('trump') or []) if p.get('habla_de_mercado')))
     os.makedirs(os.path.join(HERE, 'contexto'), exist_ok=True)
     for nombre in (f'{hoy}.json', 'hoy.json'):
         with open(os.path.join(HERE, 'contexto', nombre), 'w', encoding='utf-8') as fh:
@@ -103,7 +121,7 @@ def main():
     m = c['marcas']
     print(f"Contexto {hoy}: {len(c.get('calendario') or [])} eventos ({eventos or 'ninguno'}) · decisión Fed {m['decision_fed']} · minutas {m['minutas_fed']} · "
           f"reportaron ayer {m['gigantes_reportaron_ayer_tras_cierre']} · hoy antes {m['gigantes_reportan_hoy_antes']} · hoy después {m['gigantes_reportan_hoy_tras_cierre']} · "
-          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · errores {list(c['errores'])}")
+          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · Trump: {len(c.get('trump') or [])} posts ({m['trump_posts_de_mercado']} de mercado) · errores {c['errores']}")
 
 
 if __name__ == '__main__':
