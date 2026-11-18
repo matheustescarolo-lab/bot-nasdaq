@@ -5,6 +5,7 @@ y contexto/hoy.json. No opera. Si una fuente falla, sigue con las demás.
   - Reportes de resultados de los gigantes del Nasdaq-100 (calendario de nasdaq.com): ayer tras el cierre y hoy.
   - Futuros del Nasdaq y del S&P y VIX antes de la apertura (Yahoo Finance).
   - Titulares (CNBC).
+  - Flujo: DIX/GEX de SqueezeMetrics y posicionamiento semanal de fondos (COT de la CFTC). Solo se anotan (sombra).
 Marcas que usa el bot: decision_fed (no opera el rango de 30 min), y las demás quedan anotadas para el laboratorio.
 """
 import os, json, re, datetime as dt, urllib.request, xml.etree.ElementTree as ET
@@ -84,6 +85,34 @@ def trump(n=20):
     return posts
 
 
+def dealers():
+    """DIX (compra en dark pools) y GEX (gamma de los dealers) de SqueezeMetrics: último día y su percentil en 1 año."""
+    filas = bajar('https://squeezemetrics.com/monitor/static/DIX.csv', 30).decode().strip().splitlines()[1:]
+    f = [r.split(',') for r in filas[-250:]]
+    dix = [float(r[2]) for r in f]; gex = [float(r[3]) for r in f]
+    pct = lambda xs: round(sum(x <= xs[-1] for x in xs) / len(xs), 2)
+    return dict(fecha=f[-1][0], dix=round(dix[-1], 4), dix_pct=pct(dix), gex=round(gex[-1] / 1e9, 2), gex_pct=pct(gex))
+
+
+def fondos(hoy):
+    """COT de la CFTC (Nasdaq-100 consolidado): posición neta de los fondos apalancados / interés abierto y su cambio en la semana.
+    Laboratorio 8 años: si recortan fuerte (cambio < -2.6 pp) nuestras estrategias ganan mucho menos esa semana (t≈2.5). En sombra."""
+    import io, csv, zipfile
+    filas = []
+    for y in (hoy.year - 1, hoy.year):
+        try:
+            z = zipfile.ZipFile(io.BytesIO(bajar(f'https://www.cftc.gov/files/dea/history/fut_fin_txt_{y}.zip', 60)))
+            filas += [r for r in csv.DictReader(io.TextIOWrapper(z.open(z.namelist()[0]), encoding='latin-1'))
+                      if 'NASDAQ-100 Consolidated' in r['Market_and_Exchange_Names']]
+        except Exception:
+            pass
+    filas.sort(key=lambda r: r['Report_Date_as_YYYY-MM-DD'])
+    neto = lambda r: (float(r['Lev_Money_Positions_Long_All']) - float(r['Lev_Money_Positions_Short_All'])) / float(r['Open_Interest_All'])
+    a, b = filas[-2], filas[-1]; cambio = neto(b) - neto(a)
+    return dict(reporte=b['Report_Date_as_YYYY-MM-DD'], neto_apalancados=round(neto(b), 4), cambio_semana=round(cambio, 4),
+                lectura='recortaron fuerte' if cambio < -0.0259 else 'aumentaron fuerte' if cambio > 0.0233 else 'normal')
+
+
 def anterior_habil(d):
     d -= dt.timedelta(days=1)
     while d.weekday() >= 5:
@@ -96,7 +125,7 @@ def main():
     c = dict(fecha=str(hoy), generado_ny=ahora.strftime('%Y-%m-%d %H:%M'), errores={})
     for clave, fn in [('calendario', lambda: calendario(hoy)), ('reportes_ayer', lambda: reportes(ayer)),
                       ('reportes_hoy', lambda: reportes(hoy)), ('titulares', titulares), ('trump', trump),
-                      ('nasdaq_futuro', lambda: yahoo('NQ=F')), ('sp_futuro', lambda: yahoo('ES=F')), ('vix', lambda: yahoo('%5EVIX'))]:
+                      ('nasdaq_futuro', lambda: yahoo('NQ=F')), ('sp_futuro', lambda: yahoo('ES=F')), ('vix', lambda: yahoo('%5EVIX')), ('dealers', dealers), ('fondos', lambda: fondos(hoy))]:
         try:
             c[clave] = fn()
         except Exception as e:
@@ -113,6 +142,8 @@ def main():
         gigantes_reportan_hoy_tras_cierre=[r['simbolo'] for r in (c.get('reportes_hoy') or []) if 'after' in (r.get('hora') or '').lower()],
         gap_nasdaq_futuro=(c.get('nasdaq_futuro') or {}).get('cambio'),
         vix=(c.get('vix') or {}).get('precio'),
+        dix_pct=(c.get('dealers') or {}).get('dix_pct'), gex_pct=(c.get('dealers') or {}).get('gex_pct'),
+        fondos_semana=(c.get('fondos') or {}).get('lectura'),
         trump_posts_de_mercado=sum(1 for p in (c.get('trump') or []) if p.get('habla_de_mercado')))
     os.makedirs(os.path.join(HERE, 'contexto'), exist_ok=True)
     for nombre in (f'{hoy}.json', 'hoy.json'):
@@ -121,7 +152,7 @@ def main():
     m = c['marcas']
     print(f"Contexto {hoy}: {len(c.get('calendario') or [])} eventos ({eventos or 'ninguno'}) · decisión Fed {m['decision_fed']} · minutas {m['minutas_fed']} · "
           f"reportaron ayer {m['gigantes_reportaron_ayer_tras_cierre']} · hoy antes {m['gigantes_reportan_hoy_antes']} · hoy después {m['gigantes_reportan_hoy_tras_cierre']} · "
-          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · Trump: {len(c.get('trump') or [])} posts ({m['trump_posts_de_mercado']} de mercado) · errores {c['errores']}")
+          f"futuro Nasdaq {m['gap_nasdaq_futuro']} · VIX {m['vix']} · Trump: {len(c.get('trump') or [])} posts ({m['trump_posts_de_mercado']} de mercado) · DIX pct {m['dix_pct']} · GEX pct {m['gex_pct']} · fondos {m['fondos_semana']} · errores {c['errores']}")
 
 
 if __name__ == '__main__':
