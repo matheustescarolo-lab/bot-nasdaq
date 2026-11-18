@@ -249,7 +249,48 @@ def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
     return None
 
 
+def pendientes(sym, clave):
+    return [o for o in (mt5.orders_get(symbol=sym) or []) if o.magic == MAGIC[clave]]
+
+
+def cancelar_pendientes(sym, clave, motivo):
+    for o in pendientes(sym, clave):
+        r = mt5.order_send(dict(action=mt5.TRADE_ACTION_REMOVE, order=o.ticket))
+        if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
+            log('cancela', NOMBRE[clave], 'compra' if o.type == mt5.ORDER_TYPE_BUY_STOP else 'venta', o.volume_current,
+                f'{o.price_open:.2f}', f'orden pendiente cancelada: {motivo}')
+        else:
+            log('error', NOMBRE[clave], detalle=f"no pude cancelar la pendiente {o.ticket}: {r.retcode if r else mt5.last_error()}")
+
+
+def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
+    """Orden stop en el servidor: se llena en cuanto el precio toca el nivel (sin esperar al ciclo de 10 s del bot)."""
+    info = mt5.symbol_info(sym)
+    req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=round(precio, info.digits),
+               sl=round(sl, info.digits), magic=MAGIC[clave], comment=clave,
+               type=mt5.ORDER_TYPE_BUY_STOP if lado > 0 else mt5.ORDER_TYPE_SELL_STOP)
+    r = None
+    for tt in (mt5.ORDER_TIME_DAY, mt5.ORDER_TIME_GTC):
+        for f in (mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK):
+            r = mt5.order_send({**req, 'type_time': tt, 'type_filling': f})
+            if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
+                log('pendiente', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{precio:.2f}', f'{motivo} · stop {sl:,.2f}')
+                return True
+    log('error', NOMBRE[clave], detalle=f"no pude poner la orden pendiente: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
+    return False
+
+
+def entrada_anotada(clave, hoy):
+    try:
+        with open(BITACORA, encoding='utf-8') as fh:
+            return any(f['evento'] == 'entrada' and f['estrategia'] == NOMBRE[clave] and f['hora_UTC'][:10] == f'{hoy:%Y-%m-%d}'
+                       for f in csv.DictReader(fh))
+    except Exception:
+        return False
+
+
 def cerrar(sym, clave, motivo):
+    cancelar_pendientes(sym, clave, motivo)
     _, ps = posicion(sym, clave)
     for p in ps:
         lado = -1 if p.type == mt5.POSITION_TYPE_BUY else 1
@@ -279,12 +320,30 @@ def sincronizar(sym, df, hoy, ahora, lotes):
     if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC and not CONTEXTO.get('marcas', {}).get('decision_fed'):
         hi, lo = niv
         lado_m, est = modelo_orb(hoy_df, hi, lo)
-        lado_r, _ = posicion(sym, 'orb')
-        if est == 'activo' and lado_r == 0 and not opero_hoy('orb', hoy):
+        lado_r, ps = posicion(sym, 'orb')
+        pend = pendientes(sym, 'orb')
+        if lado_r != 0:
+            if pend:
+                cancelar_pendientes(sym, 'orb', 'se llenó la del otro lado')
+            if not entrada_anotada('orb', hoy):
+                p = ps[0]; nivel = hi if lado_r > 0 else lo
+                log('entrada', NOMBRE['orb'], 'compra' if lado_r > 0 else 'venta', p.volume, f'{p.price_open:.2f}',
+                    f'se llenó la orden pendiente del rango de 30 min ({lo:,.2f}–{hi:,.2f}) · deslizamiento {(p.price_open - nivel) * lado_r:+.2f} pts · stop {p.sl:,.2f}')
+            if est == 'stop' or (lado_m != 0 and lado_m != lado_r):
+                cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
+        elif opero_hoy('orb', hoy) or est in ('stop', 'ambos') or ahora.time() >= CIERRE:
+            if pend:
+                cancelar_pendientes(sym, 'orb', 'el rango ya se operó o ya no aplica hoy')
+        elif est == 'esperando' and not pend:
+            info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
+            dist = max(info.point, (info.trade_stops_level or 0) * info.point)
+            if t is not None and t.ask + dist < hi + info.point and t.bid - dist > lo - info.point:
+                rango = f'rango de 30 min ({lo:,.2f}–{hi:,.2f})'
+                poner_pendiente(sym, 'orb', 1, lotes['orb'], hi + info.point, lo, 'compra si rompe arriba del ' + rango)
+                poner_pendiente(sym, 'orb', -1, lotes['orb'], lo - info.point, hi, 'venta si rompe abajo del ' + rango)
+        elif est == 'activo' and not pend:
             abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
-                  f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f})')
-        elif lado_r != 0 and (est == 'stop' or lado_m != lado_r):
-            cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
+                  f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f}) sin orden pendiente: entra a mercado')
     # --- Zona de ruido ---
     cierre_ayer = float(previos[-1].c.iloc[-1]) if previos else None
     pos_m, info, ultimo = modelo_ruido(hoy_df, previos, cierre_ayer, ahora)
@@ -313,7 +372,7 @@ def proteger(sym, df):
             lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
             desde = a_ny(p.time).replace(second=0, microsecond=0)
             desde = desde - dt.timedelta(minutes=desde.minute % 5)
-            velas_pos = df[df.index >= desde]
+            velas_pos = df[df.index > desde] if clave == 'orb' else df[df.index >= desde]   # ORB entra a media vela: su máximo previo no cuenta
             mejor = max([t.bid] + list(velas_pos.h)) if lado > 0 else min([t.ask] + list(velas_pos.l))
             maxima = (mejor - p.price_open) * lado * usd_pt
             piso = piso_usd(clave, maxima)
@@ -669,7 +728,10 @@ def main():
             errores += 1
             if errores in (1, 10, 50):
                 log('error', detalle=f'{type(e).__name__}: {e}'[:200])
-        time.sleep(10)
+        try:
+            time.sleep(2 if pendientes(sym, 'orb') else 10)
+        except Exception:
+            time.sleep(10)
     mt5.shutdown()
 
 
