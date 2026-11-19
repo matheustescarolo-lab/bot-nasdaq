@@ -128,18 +128,34 @@ def partir_dias(df, hoy):
 
 def contratos_hoy(sym):
     """Tamaño según la volatilidad (8 años: Sharpe 1.38→1.45, peor caída −19%): más MNQ en días tranquilos, menos en agitados.
-    Peso = mediana de la volatilidad de 14 días del último año / volatilidad de 14 días de hoy, entre 0.5× y 1.5× de CONTRATOS."""
+    Igual que la simulación: volatilidad = promedio de (máximo − mínimo) del horario normal (9:30–16:00) de los últimos 14 días
+    / cierre de ayer; peso = mediana de esa volatilidad en el último año / la de hoy, entre 0.5× y 1.5× de CONTRATOS.
+    Usa velas de 30 min (cubren ~1 año); si no alcanzan, velas diarias de 24 h (aproximación)."""
     try:
-        r = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_D1, 1, 300)          # desde ayer hacia atrás
+        r = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M30, 0, 20000)
         d = pd.DataFrame(r)
-        rango = (d['high'] - d['low']) / d['close'].shift(1)
-        v14 = rango.rolling(14).mean()
-        hoy, med = float(v14.iloc[-1]), float(v14.iloc[-250:].median())
-        peso = min(1.5, max(0.5, med / hoy))
-        return max(1, round(CONTRATOS * peso)), peso, hoy, med
-    except Exception as e:
-        log('aviso', detalle=f'no pude calcular la volatilidad ({e}); uso {CONTRATOS} MNQ')
-        return CONTRATOS, 1.0, None, None
+        d.index = [a_ny(x) for x in d['time']]
+        d = d[(d.index.time >= T('09:30')) & (d.index.time < T('16:00'))]
+        hoy_ny = ahora_ny().date()
+        g = d.groupby(d.index.date).agg(h=('high', 'max'), l=('low', 'min'), c=('close', 'last'), n=('close', 'size'))
+        g = g[(g.n >= 12) & (g.index < hoy_ny) & ~pd.Index([str(x) for x in g.index]).isin(list(FERIADOS))]
+        if len(g) < 80:
+            raise ValueError(f'solo {len(g)} días en velas de 30 min')
+        v = (g.h - g.l).rolling(14).mean() / g.c
+        hoy, med, fuente = float(v.iloc[-1]), float(v.iloc[-250:].median()), 'horario normal'
+    except Exception as e1:
+        try:
+            r = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_D1, 1, 300)          # desde ayer hacia atrás
+            d = pd.DataFrame(r)
+            v = ((d['high'] - d['low']) / d['close'].shift(1)).rolling(14).mean()
+            hoy, med, fuente = float(v.iloc[-1]), float(v.iloc[-250:].median()), f'velas diarias 24 h ({e1})'
+        except Exception as e:
+            log('aviso', detalle=f'no pude calcular la volatilidad ({e}); uso {CONTRATOS} MNQ')
+            return CONTRATOS, 1.0, None, None
+    peso = min(1.5, max(0.5, med / hoy))
+    if fuente != 'horario normal':
+        log('aviso', detalle=f'volatilidad calculada con {fuente}'[:200])
+    return max(1, round(CONTRATOS * peso)), peso, hoy, med
 
 
 def leer_contexto(hoy):
@@ -633,6 +649,8 @@ def prueba():
     ultimo = dias[-1]
     hoy_df, previos = partir_dias(df, ultimo)
     print(f'✅ Historia: {len(previos)} días completos antes del {ultimo} (se necesitan 14)')
+    n, peso, vh, vm = contratos_hoy(sym)
+    print(f"{'✅' if vh else '⚠️'} Volatilidad (horario normal, 14 días): {vh if vh is None else f'{vh:.2%}'} vs normal {vm if vm is None else f'{vm:.2%}'} → peso {peso:.2f} → {n} MNQ con base {CONTRATOS}")
     niv = niveles_orb(hoy_df)
     if niv:
         lado, est = modelo_orb(hoy_df, *niv)
