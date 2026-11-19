@@ -48,7 +48,7 @@ jobs:
             mnq: '4'
             instalador: https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe
           - cuenta: ftmo
-            mnq: '12'          # reto agresivo: 8 años → pasa ~30% pero se decide en ~2.5 semanas; máximo neto a 12 meses (meseta 10–15)
+            mnq: '6'           # reto moderado (meta: FTMO 100K a €439, un reto a la vez): 4 retos → cobra ~72–87%, profit típico 12 m +$16.7k a +$26.4k
             instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
