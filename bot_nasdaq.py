@@ -174,7 +174,7 @@ def factor_evento():
         return 1.0, False, []
     m = CONTEXTO.get('marcas') or {}
     f, mot = 1.0, []
-    ayer = [r['simbolo'] for r in (CONTEXTO.get('reportes_ayer') or []) if 'pre' not in (r.get('hora') or '').lower()]
+    ayer = [r['simbolo'] for r in (CONTEXTO.get('reportes_ayer') or []) if 'pre' not in (r.get('hora') or '').lower() and r.get('simbolo') != 'ASML']   # ASML cuenta el mismo día (igual que la simulación)
     hoy_antes = [r['simbolo'] for r in (CONTEXTO.get('reportes_hoy') or []) if 'pre' in (r.get('hora') or '').lower() or r.get('simbolo') == 'ASML']
     if ayer or hoy_antes:
         f *= EVENTO_GIGANTES; mot.append(f"reporte de gigantes ({', '.join(ayer + hoy_antes)})")
@@ -693,43 +693,41 @@ def main():
     global CONTEXTO
     CONTEXTO = leer_contexto(hoy)
     n_mnq, peso, v_hoy, v_med = contratos_hoy(sym)
+    # Tamaño = base × (todos los factores multiplicados) y se redondea UNA vez, igual que la simulación (final2.py: round(base × mo))
+    f_orb = peso
     r9 = (CONTEXTO.get('marcas') or {}).get('vix9d_vix') if CONTEXTO else None
     if r9 and r9 > MIEDO_CORTO:
-        n_mnq = max(1, round(n_mnq * 0.5))
-        log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → medio tamaño: {n_mnq} MNQ')
+        f_orb *= 0.5
+        log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → ×0.5')
     f_ev, nfp, motivos = factor_evento()
     if f_ev != 1.0:
-        n_mnq = max(1, round(n_mnq * f_ev))
-        log('tamaño', detalle=f"{' y '.join(motivos)} → ×{f_ev:g}: {n_mnq} MNQ")
-    lotes = round(round(lotes_por_mnq(info) * n_mnq / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
-    if info.volume_max and lotes > info.volume_max:
-        log('aviso', detalle=f'{lotes} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
-        lotes = float(info.volume_max)
-    lotes_ruido = lotes
+        f_orb *= f_ev
+        log('tamaño', detalle=f"{' y '.join(motivos)} → ×{f_ev:g}")
+    f_ruido = f_orb
     try:
         _, prev0 = partir_dias(velas(sym), hoy)
         ay = prev0[-1]; pos_ayer = (float(ay.c.iloc[-1]) - float(ay.l.min())) / max(float(ay.h.max() - ay.l.min()), 1e-9)
         f_c = 1.5 if pos_ayer > CIERRE_FUERTE else 0.5 if pos_ayer < CIERRE_DEBIL else 1.0
         if f_c != 1.0:
-            lotes_ruido = max(info.volume_step or 0.01, round(round(lotes * f_c / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8))
-            if info.volume_max:
-                lotes_ruido = min(lotes_ruido, float(info.volume_max))
-            log('tamaño', detalle=f"ayer cerró en el {pos_ayer:.0%} de su rango → zona de ruido ×{f_c:g}: {lotes_ruido:g} lotes")
+            f_ruido *= f_c
+            log('tamaño', detalle=f"ayer cerró en el {pos_ayer:.0%} de su rango → zona de ruido ×{f_c:g}")
     except Exception as e:
         log('aviso', detalle=f'no pude revisar el cierre de ayer ({e})')
     if nfp:
-        lotes_ruido = round(round(lotes_ruido * NFP_RUIDO / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
-        if info.volume_max:
-            lotes_ruido = min(lotes_ruido, float(info.volume_max))
-        log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g} → {lotes_ruido:g} lotes')
-    if MODO == 'ftmo':   # FTMO revisa tamaños «mucho más grandes» que los habituales (sobreapalancamiento): tope 2× la base
-        paso = info.volume_step or 0.01
-        tope = round(round(lotes_por_mnq(info) * CONTRATOS * TOPE_FTMO / paso) * paso, 8)
-        if lotes > tope or lotes_ruido > tope:
-            lotes, lotes_ruido = min(lotes, tope), min(lotes_ruido, tope)
-            log('tamaño', detalle=f'tope FTMO {TOPE_FTMO:g}× la base ({CONTRATOS} MNQ) → máximo {tope:g} lotes por estrategia')
+        f_ruido *= NFP_RUIDO
+        log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g}')
+    if MODO == 'ftmo' and (f_orb > TOPE_FTMO or f_ruido > TOPE_FTMO):   # FTMO revisa tamaños «mucho más grandes» que los habituales
+        log('tamaño', detalle=f'tope FTMO: máximo {TOPE_FTMO:g}× la base ({CONTRATOS} MNQ) por estrategia')
+        f_orb, f_ruido = min(f_orb, TOPE_FTMO), min(f_ruido, TOPE_FTMO)
+    n_mnq, n_ruido = max(1, round(CONTRATOS * f_orb)), max(1, round(CONTRATOS * f_ruido))
+    paso, lpm = info.volume_step or 0.01, lotes_por_mnq(info)
+    lotes, lotes_ruido = (round(round(lpm * n / paso) * paso, 8) for n in (n_mnq, n_ruido))
+    if info.volume_max and max(lotes, lotes_ruido) > info.volume_max:
+        log('aviso', detalle=f'{max(lotes, lotes_ruido)} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
+        lotes, lotes_ruido = min(lotes, float(info.volume_max)), min(lotes_ruido, float(info.volume_max))
     if v_hoy:
-        log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
+        log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} · '
+                              f'hoy: rango 30 min {n_mnq} MNQ ({lotes:g} lotes) · zona de ruido {n_ruido} MNQ ({lotes_ruido:g} lotes)')
     est = leer_estado()
     est.pop('examen', None)
     if MODO == 'ftmo':
