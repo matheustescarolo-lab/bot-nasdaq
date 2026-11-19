@@ -23,6 +23,7 @@ CUENTA = os.environ.get('BOT_CUENTA', 'tickmill').lower()
 SUF = '' if CUENTA == 'tickmill' else f'_{CUENTA}'
 BITACORA = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'bitacora_nasdaq{SUF}.csv')
 FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital inicial de la cuenta FTMO
+TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
@@ -655,6 +656,12 @@ def main():
         if info.volume_max:
             lotes_ruido = min(lotes_ruido, float(info.volume_max))
         log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g} → {lotes_ruido:g} lotes')
+    if CUENTA == 'ftmo':   # FTMO revisa tamaños «mucho más grandes» que los habituales (sobreapalancamiento): tope 2× la base
+        paso = info.volume_step or 0.01
+        tope = round(round(lotes_por_mnq(info) * CONTRATOS * TOPE_FTMO / paso) * paso, 8)
+        if lotes > tope or lotes_ruido > tope:
+            lotes, lotes_ruido = min(lotes, tope), min(lotes_ruido, tope)
+            log('tamaño', detalle=f'tope FTMO {TOPE_FTMO:g}× la base ({CONTRATOS} MNQ) → máximo {tope:g} lotes por estrategia')
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} → {n_mnq} MNQ por estrategia')
     est = leer_estado()
