@@ -1,0 +1,14 @@
+name: Prueba de ubicación del runner
+on: workflow_dispatch
+jobs:
+  ip:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: País de la IP
+        shell: bash
+        run: |
+          curl -s https://ipinfo.io/json | grep -E '"(ip|city|region|country|org)"' || true
+          curl -s http://ip-api.com/json || true
