@@ -19,3 +19,13 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-18 17:53:08,tamaño,,,,,volatilidad 14 días 3.45% vs normal 1.81% → peso 0.52 → 2 MNQ por estrategia
 2026-11-18 17:53:08,inicio,,,,,"tramo de la tarde · USTEC · 4 lotes por estrategia (≈2 MNQ) · equity 48,491.10 · A 2 MNQ meta +1,550 · B 2 MNQ meta +1,550 · C 3 MNQ meta +1,550 · cuenta demo · trabaja hasta las 15:58 NY"
 2026-11-18 20:55:09,resumen,,,,,"📊 Update del bot Nasdaq — 18-11-2026 | 💰 Cuenta: $48,491.10 | • Rango 30 min: 1 operación(es) · -1,464.32 USD | • Zona de ruido: sin operaciones | 🧮 Total del día: -1,464.32 USD (base 4 MNQ por estrategia, ajustado por volatilidad) | 🎯 A (base 3, hoy 2 MNQ): examen #1 · día 1 · hoy -1,464 · lleva -1,464 de +3,000 · margen $536 | 🎯 B (base 4, hoy 2 MNQ): examen #1 · día 1 · hoy -1,464 · lleva -1,464 de +3,000 · margen $536 | 🔥 C (base 6, hoy 3 MNQ): examen #1 QUEMADO hoy (-2,028) tras 1 días. Mañana arranca el #2. | 📈 Exámenes terminados: A: 0 aprobados de 0 · B: 0 aprobados de 0 · C: 0 aprobados de 1 | ✅ Sin errores"
+2026-11-19 14:48:09,tamaño,,,,,volatilidad 14 días 2.35% vs normal 1.46% → peso 0.62 · hoy: rango 30 min 4 MNQ (8 lotes) · zona de ruido 4 MNQ (8 lotes)
+2026-11-19 14:48:09,inicio,,,,,"tramo de la mañana · USTEC · 8 lotes por estrategia (≈4 MNQ) · equity 48,491.10 · FTMO fase 1 · meta del día +10,050 · freno en equity 43,891 · cuenta demo · trabaja hasta las 12:50 NY"
+2026-11-19 14:48:09,contexto,,,,,"07:30 Philly Fed Manufacturing Index, 07:30 Unemployment Claims · reportaron ayer: [] · hoy: [] / [] · VIX 22.5"
+2026-11-19 15:00:01,pendiente,Rango 30 min,compra,8.0,27754.38,"compra si rompe arriba del rango de 30 min (27,537.72–27,754.37) · stop 27,537.72"
+2026-11-19 15:00:01,pendiente,Rango 30 min,venta,8.0,27537.71,"venta si rompe abajo del rango de 30 min (27,537.72–27,754.37) · stop 27,754.37"
+2026-11-19 15:12:16,cancela,Rango 30 min,compra,8.0,27754.38,orden pendiente cancelada: se llenó la del otro lado
+2026-11-19 15:12:16,entrada,Rango 30 min,venta,8.0,27537.71,"se llenó la orden pendiente del rango de 30 min (27,537.72–27,754.37) · deslizamiento +0.01 pts · stop 27,754.37"
+2026-11-19 15:15:06,protege,Rango 30 min,venta,8.0,27537.71,break even · llegó a ir +175 USD · stop de 27754.37 a 27537.71
+2026-11-19 17:25:02,salida,Rango 30 min,compra,8.0,26924.49,"sacudida en contra: la vela de las 12:20 NY se movió +0.95% · entró a 27537.71 · resultado aprox. +4,905.76 USD"
+2026-11-19 17:50:04,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
