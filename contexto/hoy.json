@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-19",
- "generado_ny": "2026-11-19 09:45",
+ "generado_ny": "2026-11-19 12:50",
  "errores": {},
  "calendario": [
   {
@@ -21,16 +21,34 @@
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Denmark ratifies Trump security deal over Greenland after months of diplomatic tensions",
-  "Walmart hikes outlook as CEO tells CNBC retailer aims to keep prices low despite soaring fuel costs",
-  "Anthropic IPO could create thousands of multimillionaire employees",
+  "AMD falls on short-seller report of alleged China exposure",
+  "Palo Alto stock jumps on earnings beat and company's big bet on securing open-weight models",
   "Kash Patel skips House hearing after Mar-a-Lago gala with $50,000 access",
-  "Gold's bad year is getting worse. Why its price keeps falling",
-  "Takaichi gets chilly reception in China on first Japan leader visit since 2019",
-  "Inside Wealth: Anthropic IPO, AI wealth spawn a new, leaner kind of family office",
-  "Intel signs first external customer for advanced 18A chips"
+  "Walmart hikes outlook as CEO tells CNBC retailer aims to keep prices low despite soaring fuel costs",
+  "Amazon launches in-app push against Mamdani-backed delivery bill in New York City",
+  "Jensen Huang's — and Nvidia's — legal exposure balloons",
+  "Trump, Xi, Putin said they plan to boost oil production, revamp UN after trilateral talks",
+  "Anthropic IPO: Investors who flip the stock may face brokerage penalty"
  ],
  "trump": [
+  {
+   "hora": "Thu, 19 Nov 2026 17:01:03 +0000",
+   "texto": "Heading back to Washington, D.C., from China. It was a Great and Highly Consequential Trip. I will be giving a News Conference tomorrow at 12 P.M., the White House. Also, will be discussing the Trade Deals with Thailand, the Philippines, and others. President DONALD J. TRUMP",
+   "enlace": "https://www.trumpstruth.org/statuses/43630",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 16:58:46 +0000",
+   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117644162493926914    View image   Quoted  Donald J. Trump       View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43628",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 16:57:39 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43629",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Thu, 19 Nov 2026 13:46:41 +0000",
    "texto": "Congratulations to Anderson University Women’s Volleyball Team on winning the South Atlantic Conference. Congratulations also to Ellie Nieporte, the daughter of John Nieporte, one of our Country’s absolutely best Senior Pro Golfers, who was awarded Tournament MVP. Genetics in the Nieporte family are GREAT! John’s father, Tom, was a Great Tour Pro. President DONALD J. TRUMP   View video",
@@ -132,45 +150,27 @@
    "texto": "View image",
    "enlace": "https://www.trumpstruth.org/statuses/43611",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 17 Nov 2026 00:44:37 +0000",
-   "texto": "Despite the United States having the MOST ABUNDANT Supply, and LOWEST COST Natural Gas in the World, Citizens in Blue States like New York have been paying 3X-7X more for Natural Gas due to the costly Anti-Energy Policies pushed by Blue State Governors and Political leaders. We must protect our American Families from these Radical Climate Extremists, they are exploding Energy costs. The Democrat P",
-   "enlace": "https://www.trumpstruth.org/statuses/43607",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 17 Nov 2026 00:42:06 +0000",
-   "texto": "Under my leadership, our Economy is booming! New Businesses created in America have reached ALL-TIME HIGHS — Over 500,000 new Businesses formed every month this year. Unlike the Communists that want to tax our Small Business Owners to “death,” my Administration and Republicans in Congress rewarded them with the Largest Tax Cuts in American History, which EVERY Democrat voted against. I WILL ALWAYS",
-   "enlace": "https://www.trumpstruth.org/statuses/43608",
-   "habla_de_mercado": true
-  },
-  {
-   "hora": "Tue, 17 Nov 2026 00:05:42 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117628855811516036    View image    View image    View image   Quoted  Donald J. Trump       View image    View image    View image",
-   "enlace": "https://www.trumpstruth.org/statuses/43606",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 27798.0,
+  "precio": 26983.0,
   "cierre_anterior": 27186.75,
-  "cambio": 0.022483378851830382
+  "cambio": -0.007494459617276794
  },
  "sp_futuro": {
-  "precio": 7428.25,
+  "precio": 7275.5,
   "cierre_anterior": 7340.5,
-  "cambio": 0.011954226551324831
+  "cambio": -0.008854982630611019
  },
  "vix": {
-  "precio": 22.5,
+  "precio": 25.7,
   "cierre_anterior": 24.559999465942383,
-  "cambio": -0.08387620157724374
+  "cambio": 0.04641696086510372
  },
  "vix9d": {
-  "precio": 23.95,
+  "precio": 25.76,
   "cierre_anterior": 23.950000762939453,
-  "cambio": -3.185550856432684e-08
+  "cambio": 0.07557407847190412
  },
  "dealers": {
   "fecha": "2026-11-18",
@@ -194,8 +194,8 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.022483378851830382,
-  "vix": 22.5,
+  "gap_nasdaq_futuro": -0.007494459617276794,
+  "vix": 25.7,
   "vix9d_vix": 0.975,
   "dix_pct": 0.23,
   "gex_pct": 0.07,
