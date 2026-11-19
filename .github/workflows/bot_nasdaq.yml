@@ -62,6 +62,17 @@ jobs:
         run: |
           if [ -z "$MT5_LOGIN" ]; then echo "Sin secretos para $BOT_CUENTA, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
 
+      - name: FTMO prohíbe entrar a MetaTrader desde EE. UU. (revisa el país de la IP)
+        if: env.SALTAR != '1' && matrix.cuenta == 'ftmo'
+        shell: bash
+        run: |
+          pais=$(curl -s --max-time 10 https://ipinfo.io/country | tr -d '[:space:]')
+          echo "País de la IP de este runner: ${pais:-desconocido}"
+          if [ "$pais" = "US" ] || [ -z "$pais" ]; then
+            echo "::warning::FTMO no corre: la IP es de EE. UU. (o no se pudo verificar). Regla FTMO: no entrar a MetaTrader desde EE. UU. Hace falta un servidor fuera de EE. UU."
+            echo "SALTAR=1" >> $GITHUB_ENV
+          fi
+
       - uses: actions/checkout@v5
         if: env.SALTAR != '1'
         with:
