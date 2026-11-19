@@ -433,9 +433,29 @@ def sacudida(sym, df, hoy):
     mov = ult.c / ant.c - 1
     if abs(mov) <= SACUDIDA:
         return
-    lado, _ = posicion(sym, 'orb')
+    lado, ps = posicion(sym, 'orb')
+    if lado != 0 and ps:
+        t0 = a_ny(ps[0].time).replace(second=0, microsecond=0)
+        if d.index[-2] < t0 - dt.timedelta(minutes=t0.minute % 5):
+            return                                    # esa vela es de antes de entrar: no cuenta (igual que la simulación)
     if lado != 0 and lado * mov < 0:
         cerrar(sym, 'orb', f'sacudida en contra: la vela de las {d.index[-2]:%H:%M} NY se movió {mov:+.2%}')
+
+
+def anotar_salidas(sym, hoy, est):
+    """Anota en la bitácora las salidas que hizo el servidor solo (stop, break even, escalera, stop de emergencia)."""
+    hechas = est.setdefault('dia', {}).setdefault('salidas_srv', [])
+    ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
+    razones = {mt5.DEAL_REASON_SL: 'stop', mt5.DEAL_REASON_TP: 'objetivo', mt5.DEAL_REASON_SO: 'falta de margen'}
+    for dl in ds:
+        clave = next((k for k, v in MAGIC.items() if v == dl.magic), None)
+        tk = getattr(dl, 'ticket', None)
+        if clave is None or dl.entry != mt5.DEAL_ENTRY_OUT or dl.reason not in razones or tk in hechas or a_ny(dl.time).date() != hoy:
+            continue
+        hechas.append(tk)
+        res = getattr(dl, 'profit', 0.0) + getattr(dl, 'commission', 0.0) + getattr(dl, 'swap', 0.0)
+        log('salida', NOMBRE[clave], 'venta' if getattr(dl, 'type', None) == mt5.DEAL_TYPE_SELL else 'compra', getattr(dl, 'volume', ''),
+            f"{getattr(dl, 'price', 0.0):.2f}", f'la cerró el servidor por {razones[dl.reason]} · resultado {res:+,.2f} USD')
 
 
 def cerrar_viejas(sym, hoy):
@@ -529,9 +549,18 @@ def ftmo_cierre(equity, hoy):
     if not f:
         return []
     ini = FTMO_INICIAL; L = []
-    if d.get('quemado'):
-        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='quemado'))
-        L.append(f"🔥 Reto FTMO fase {f['fase']}: tocó el freno antes del límite (equity {equity:,.0f}). En una cuenta real habría que revisar si sigue viva.")
+    agotado = ETAPA != 'fondeada' and equity <= f['base'] - (0.10 - 2 * FTMO_FRENO) * ini
+    if d.get('quemado') and not agotado:
+        L.append(f"🛑 Reto FTMO fase {f['fase']}: tocó el freno 0.4% antes del límite (equity {equity:,.0f}); la cuenta sigue viva, mañana sigue.")
+    if agotado:
+        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='agotado', dias=f['dias'] + 1))
+        if ETAPA == 'reto':
+            L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO: quedan menos de {2 * FTMO_FRENO:.1%} antes de la pérdida máxima. "
+                     f"En real = reto perdido. Mañana arranca un reto nuevo (como comprar otro).")
+            ftmo_fase_nueva(e, 1, equity, hoy); guardar_estado(e); return L
+        f['aprobada'] = 'agotado'
+        L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO (equity {equity:,.0f}): el bot deja de operar esta cuenta. Compra un reto nuevo, cambia los secretos y BOT_FTMO_ETAPA.")
+        guardar_estado(e); return L
     f['dias'] += 1; f['cierre_prev'] = equity
     gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
     if ETAPA == 'fondeada':
@@ -628,11 +657,16 @@ def main():
     cierre = T('12:55') if str(hoy) in MEDIO_DIA else CIERRE
     hasta = FIN_MANANA if ahora.time() < T('12:30') else (dt.datetime.combine(hoy, cierre) + dt.timedelta(minutes=3)).time()
     tramo = 'mañana' if hasta == FIN_MANANA else 'tarde'
+    if str(hoy) in MEDIO_DIA:          # la bolsa cierra a las 13:00: el tramo de la mañana se queda hasta el cierre (no deja posiciones al de la tarde)
+        hasta = (dt.datetime.combine(hoy, cierre) + dt.timedelta(minutes=3)).time()
     if not iniciar() or mt5.account_info() is None:
         log('error', detalle=f'no pude conectar con MT5 ({mt5.last_error()})'); sys.exit(1)
     acc = mt5.account_info()
     if acc.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO:
-        log('error', detalle=f'la cuenta {acc.login} NO es demo: este bot solo opera en demo'); sys.exit(1)
+        if CUENTA == 'ftmo' and 'ftmo' in (getattr(acc, 'server', '') or '').lower():
+            log('aviso', detalle=f'cuenta FTMO {acc.login} marcada como real en MT5 (capital simulado de FTMO): opero')
+        else:
+            log('error', detalle=f'la cuenta {acc.login} NO es demo: este bot solo opera en demo'); sys.exit(1)
     sym = buscar_simbolo()
     if sym is None:
         log('error', detalle='no encontré el Nasdaq-100 (USTEC) en MT5'); sys.exit(1)
@@ -691,7 +725,8 @@ def main():
             est.pop('dia', None)
             ftmo_fase_nueva(est, 2 if ETAPA == 'fase2' else 1, acc.balance, hoy)
         if est['ftmo'].get('aprobada'):
-            log('aviso', detalle=f"fase {est['ftmo']['fase']} ya aprobada en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
+            que = 'agotada (sin margen antes de la pérdida máxima)' if est['ftmo']['aprobada'] == 'agotado' else 'ya aprobada'
+            log('aviso', detalle=f"fase {est['ftmo']['fase']} {que} en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
             guardar_estado(est); mt5.shutdown(); return
         if est.get('dia', {}).get('fecha') != str(hoy):
             est['dia'] = ftmo_dia(est, acc.equity, hoy)
@@ -742,7 +777,11 @@ def main():
             for clave in MAGIC:
                 cerrar(sym, clave, f'cierre del día ({cierre:%H:%M} NY)')
             guardar_estado(est)
-            resumen(sym, hoy)
+            if leer_estado().get('dia', {}).get('resumido') == str(hoy):
+                print('El resumen de hoy ya se publicó (otro tramo): no lo repito.')
+            else:
+                resumen(sym, hoy)
+                e2 = leer_estado(); e2.setdefault('dia', {})['resumido'] = str(hoy); guardar_estado(e2)
             break
         if ahora.time() >= hasta:
             guardar_estado(est)
@@ -789,6 +828,7 @@ def main():
                 sincronizar(sym, df, hoy, ahora, {'orb': lotes, 'ruido': lotes_ruido})
                 sacudida(sym, df, hoy)
                 proteger(sym, df)
+            anotar_salidas(sym, hoy, est)
             errores = 0
         except Exception as e:
             errores += 1
