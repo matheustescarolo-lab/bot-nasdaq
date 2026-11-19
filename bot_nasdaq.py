@@ -23,6 +23,7 @@ CUENTA = os.environ.get('BOT_CUENTA', 'tickmill').lower()
 SUF = '' if CUENTA == 'tickmill' else f'_{CUENTA}'
 BITACORA = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'bitacora_nasdaq{SUF}.csv')
 FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital inicial de la cuenta FTMO
+ETAPA = os.environ.get('BOT_FTMO_ETAPA', 'reto')   # reto (fase 1 y 2 simuladas en la misma cuenta) | fase1 | fase2 | fondeada
 TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
@@ -505,15 +506,20 @@ def cerrar_dia_examen(equity, hoy):
 
 
 def ftmo_fase_nueva(e, fase, equity, hoy):
-    e['ftmo'] = dict(fase=fase, inicio=str(hoy), base=equity, cierre_prev=equity, dias=0, listo=False)
+    viejo = e.get('ftmo') or {}
+    e['ftmo'] = dict(fase=fase, inicio=str(hoy), base=equity, cierre_prev=equity, dias=0, listo=False,
+                     login=viejo.get('login'), etapa=viejo.get('etapa'))
 
 
 def ftmo_dia(e, eq, hoy):
     """Meta y pisos del día en el reto FTMO. La fase 2 se simula sobre la misma cuenta, con nueva base."""
     f = e['ftmo']; ini = FTMO_INICIAL
     obj = f['base'] + (0.10 if f['fase'] == 1 else 0.05) * ini
-    piso = max(f['cierre_prev'] - 0.05 * ini, f['base'] - 0.10 * ini)   # pérdida diaria (vs cierre de ayer) o máxima (fija)
-    meta = 50.0 if f['listo'] else max(obj - eq + 50.0, 100.0)
+    piso = max(eq - 0.05 * ini, f['base'] - 0.10 * ini)   # pérdida diaria (vs saldo al empezar el día; sin posiciones de noche) o máxima (fija)
+    if ETAPA == 'fondeada':
+        meta = 1e12                                         # cuenta fondeada: sin meta del día
+    else:
+        meta = 50.0 if f['listo'] else max(obj - eq + 50.0, 100.0)
     return dict(fecha=str(hoy), eq_inicio=eq, min_eq=eq, cerrado=False, quemado=False, meta=meta, piso=piso, obj=obj)
 
 
@@ -527,11 +533,18 @@ def ftmo_cierre(equity, hoy):
         L.append(f"🔥 Reto FTMO fase {f['fase']}: tocó el freno antes del límite (equity {equity:,.0f}). En una cuenta real habría que revisar si sigue viva.")
     f['dias'] += 1; f['cierre_prev'] = equity
     gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
+    if ETAPA == 'fondeada':
+        L.append(f"💼 Cuenta FTMO fondeada · día {f['dias']} · {gan:+,.0f} desde el inicio · pérdida máxima en {f['base'] - 0.10 * ini:,.0f}")
+        guardar_estado(e); return L
     if gan >= obj:
         f['listo'] = True
     if f['listo'] and f['dias'] >= 4:
         e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='aprobada', dias=f['dias']))
-        if f['fase'] == 1:
+        if ETAPA in ('fase1', 'fase2'):
+            f['aprobada'] = True
+            L.append(f"🏆 FASE {f['fase']} APROBADA en {f['dias']} días (+${gan:,.0f}). El bot deja de operar esta cuenta: "
+                     f"pide la siguiente en FTMO, cambia los secretos FTMO_* y BOT_FTMO_ETAPA.")
+        elif f['fase'] == 1:
             L.append(f"🏆 FASE 1 APROBADA en {f['dias']} días (+${gan:,.0f}). Mañana arranca la fase 2 (meta +5%).")
             ftmo_fase_nueva(e, 2, equity, hoy)
         else:
@@ -667,16 +680,26 @@ def main():
     est = leer_estado()
     est.pop('examen', None)
     if CUENTA == 'ftmo':
-        if 'ftmo' not in est:
-            ftmo_fase_nueva(est, 1, acc.balance, hoy)
+        f0 = est.get('ftmo') or {}
+        if f0 and f0.get('login') is None:            # estado de antes de este cambio: es la misma cuenta
+            f0['login'], f0['etapa'] = acc.login, ETAPA
+        if not f0 or f0.get('login') != acc.login or (f0.get('etapa') or 'reto') != ETAPA:
+            if f0:
+                log('aviso', detalle=f"cuenta o etapa nueva (login {acc.login}, etapa {ETAPA}) → reinicio el seguimiento FTMO con balance {acc.balance:,.2f}")
+            est['ftmo'] = dict(login=acc.login, etapa=ETAPA)
+            est.pop('dia', None)
+            ftmo_fase_nueva(est, 2 if ETAPA == 'fase2' else 1, acc.balance, hoy)
+        if est['ftmo'].get('aprobada'):
+            log('aviso', detalle=f"fase {est['ftmo']['fase']} ya aprobada en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
+            guardar_estado(est); mt5.shutdown(); return
         if est.get('dia', {}).get('fecha') != str(hoy):
             est['dia'] = ftmo_dia(est, acc.equity, hoy)
-        if est['ftmo']['listo']:
+        if est['ftmo']['listo'] and ETAPA != 'fondeada':
             n_mnq = 1
             lotes = lotes_ruido = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
         guardar_estado(est)
         dd = est['dia']
-        meta_txt = f"FTMO fase {est['ftmo']['fase']} · meta del día +{dd['meta']:,.0f} · freno en equity {dd['piso'] + FTMO_FRENO * FTMO_INICIAL:,.0f}"
+        meta_txt = f"FTMO {'fondeada · sin meta' if ETAPA == 'fondeada' else 'fase ' + str(est['ftmo']['fase']) + ' · meta del día +' + format(dd['meta'], ',.0f')} · freno en equity {dd['piso'] + FTMO_FRENO * FTMO_INICIAL:,.0f}"
     for v in (VERSIONES if CUENTA != 'ftmo' else {}):
         if v not in est.get('versiones', {}):
             examen_nuevo(est, v, hoy)

@@ -50,9 +50,11 @@ jobs:
           - cuenta: ftmo
             mnq: '6'           # reto moderado (meta: FTMO 100K a €439, un reto a la vez): 4 retos → cobra ~72–87%, profit típico 12 m +$16.7k a +$26.4k
             instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
+            etapa: 'reto'      # prueba gratis: fase 1 y 2 en la misma cuenta. Reto pagado: 'fase1' → 'fase2' (cuenta nueva) → 'fondeada' con mnq '4'
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
       BOT_MNQ: ${{ matrix.mnq }}
+      BOT_FTMO_ETAPA: ${{ matrix.etapa || 'reto' }}
       MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || matrix.cuenta == 'tickmill' && secrets.MT5_LOGIN || '' }}
       MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || matrix.cuenta == 'tickmill' && secrets.MT5_PASSWORD || '' }}
       MT5_SERVER: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_SERVER || matrix.cuenta == 'tickmill' && secrets.MT5_SERVER || '' }}
