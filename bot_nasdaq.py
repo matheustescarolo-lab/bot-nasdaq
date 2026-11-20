@@ -560,6 +560,14 @@ def ftmo_dia(e, eq, hoy):
     return dict(fecha=str(hoy), eq_inicio=eq, min_eq=eq, cerrado=False, quemado=False, meta=meta, piso=piso, obj=obj)
 
 
+def hubo_operaciones(hoy):
+    try:
+        ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
+        return any(d.magic in MAGIC.values() and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds)
+    except Exception:
+        return True
+
+
 def ftmo_cierre(equity, hoy):
     e = leer_estado(); f = e.get('ftmo'); d = e.get('dia', {})
     if not f:
@@ -577,7 +585,8 @@ def ftmo_cierre(equity, hoy):
         f['aprobada'] = 'agotado'
         L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO (equity {equity:,.0f}): el bot deja de operar esta cuenta. Compra un reto nuevo, cambia los secretos y BOT_FTMO_ETAPA.")
         guardar_estado(e); return L
-    f['dias'] += 1; f['cierre_prev'] = equity
+    opero = hubo_operaciones(hoy)                  # FTMO solo cuenta como día de trading el que tiene al menos una operación
+    f['dias'] += 1 if opero else 0; f['cierre_prev'] = equity
     gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
     if ETAPA == 'fondeada':
         L.append(f"💼 Cuenta FTMO fondeada · día {f['dias']} · {gan:+,.0f} desde el inicio · pérdida máxima en {f['base'] - 0.10 * ini:,.0f}")
