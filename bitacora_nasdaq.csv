@@ -46,3 +46,9 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-20 14:48:04,filtro,,,,,ayer el Nasdaq cerró -2.19%: hoy no opera la zona de ruido ni el rango de 30 min
 2026-11-20 14:48:04,contexto,,,,,"09:00 Revised UoM Consumer Sentiment, 09:00 Revised UoM Inflation Expectations, 11:00 President Trump Speaks · reportaron ayer: [] · hoy: [] / [] · VIX 29.46"
 2026-11-20 17:50:01,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
+2026-11-20 17:52:54,tamaño,,,,,ayer cerró en el 2% de su rango → zona de ruido ×0.5
+2026-11-20 17:52:54,tamaño,,,,,volatilidad 14 días 2.57% vs normal 1.46% → peso 0.57 · hoy: rango 30 min 3 MNQ (6 lotes) · zona de ruido 2 MNQ (4 lotes)
+2026-11-20 17:52:54,inicio,,,,,"tramo de la tarde · USTEC · 6 lotes por estrategia (≈3 MNQ) · equity 54,340.78 · FTMO fase 1 · meta del día +4,200 · freno en equity 49,741 · cuenta demo · trabaja hasta las 15:58 NY"
+2026-11-20 17:52:54,filtro,,,,,ayer el Nasdaq cerró -2.19%: hoy no opera la zona de ruido ni el rango de 30 min
+2026-11-20 17:52:54,contexto,,,,,"09:00 Revised UoM Consumer Sentiment, 09:00 Revised UoM Inflation Expectations, 11:00 President Trump Speaks · reportaron ayer: [] · hoy: [] / [] · VIX 31.68"
+2026-11-20 20:55:03,resumen,,,,,"📊 Update del bot Nasdaq (reglas FTMO) — 20-11-2026 | 💰 Cuenta: $54,340.78 | • Rango 30 min: sin operaciones | • Zona de ruido: sin operaciones | 🧮 Total del día: +0.00 USD (base 6 MNQ por estrategia, ajustado por volatilidad) | 🎯 Reto FTMO fase 1 · día 2 · lleva +5,850 de +10,000 · margen mañana $5,000 | ✅ Sin errores"

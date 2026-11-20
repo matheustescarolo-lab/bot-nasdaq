@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-20",
- "generado_ny": "2026-11-20 09:45",
+ "generado_ny": "2026-11-20 12:50",
  "errores": {},
  "calendario": [
   {
@@ -28,14 +28,14 @@
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Anthropic raises $93.5 billion total as underwriters scoop up ‘greenshoe’ overallotment",
-  "U.S.-China trade, Taiwan and tech tensions remain unresolved as Trump returns from Asia",
+  "Jensen Huang wasn't mentioned in latest talks with China, Bessent says",
   "The bull market has a new problem. The 'smart money' is selling",
-  "Bitcoin suffered identical sell-off pattern ahead of Anthropic, SpaceX IPOs — what happens next?",
-  "SpaceX’s subsidiary Cursor tells lawmakers it's considering phasing out Chinese AI models",
-  "Cathie Wood's ARK Invest was a big buyer of Anthropic, tells CNBC she's 'quite optimistic'",
-  "A24 is having a great year at the box office. That could give HBO Max a streaming edge",
-  "Bitcoin's regulation bull case is played out. What could drive crypto gains moving forward"
+  "Ex-GM CEO on Mary Barra succession planning: 'It's going to be tough'",
+  "Anthropic raises $93.5 billion total as underwriters scoop up ‘greenshoe’ overallotment",
+  "Gap stock soars as retailer says Old Navy turnaround shows signs of improvement",
+  "Warsh wants Fed officials to talk less. Instead, they’re talking more",
+  "As Anthropic shares tank, investors scramble to hedge. It could be very expensive",
+  "Data center construction costs soar 13% in 2026"
  ],
  "trump": [
   {
@@ -160,24 +160,24 @@
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26215.5,
+  "precio": 25535.0,
   "cierre_anterior": 26600.25,
-  "cambio": -0.014464149773028456
+  "cambio": -0.040046616103232124
  },
  "sp_futuro": {
-  "precio": 7162.75,
+  "precio": 7028.75,
   "cierre_anterior": 7197.25,
-  "cambio": -0.004793497516412559
+  "cambio": -0.023411719754072746
  },
  "vix": {
-  "precio": 29.46,
+  "precio": 31.68,
   "cierre_anterior": 28.440000534057617,
-  "cambio": 0.03586495945106982
+  "cambio": 0.11392402971520355
  },
  "vix9d": {
-  "precio": 29.26,
+  "precio": 32.26,
   "cierre_anterior": 29.260000228881836,
-  "cambio": -7.822345660102314e-09
+  "cambio": 0.10252904127310747
  },
  "dealers": {
   "fecha": "2026-11-19",
@@ -201,8 +201,8 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": -0.014464149773028456,
-  "vix": 29.46,
+  "gap_nasdaq_futuro": -0.040046616103232124,
+  "vix": 31.68,
   "vix9d_vix": 1.029,
   "dix_pct": 0.16,
   "gex_pct": 0.02,
