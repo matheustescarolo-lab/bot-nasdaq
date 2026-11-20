@@ -1,0 +1,212 @@
+{
+ "fecha": "2026-11-20",
+ "generado_ny": "2026-11-20 09:45",
+ "errores": {},
+ "calendario": [
+  {
+   "hora_mx": "09:00",
+   "evento": "Revised UoM Consumer Sentiment",
+   "impacto": "Medium",
+   "estimado": "51.7",
+   "anterior": "51.0"
+  },
+  {
+   "hora_mx": "09:00",
+   "evento": "Revised UoM Inflation Expectations",
+   "impacto": "Medium",
+   "estimado": "",
+   "anterior": "4.3%"
+  },
+  {
+   "hora_mx": "11:00",
+   "evento": "President Trump Speaks",
+   "impacto": "Medium",
+   "estimado": "",
+   "anterior": ""
+  }
+ ],
+ "reportes_ayer": [],
+ "reportes_hoy": [],
+ "titulares": [
+  "Anthropic raises $93.5 billion total as underwriters scoop up ‘greenshoe’ overallotment",
+  "U.S.-China trade, Taiwan and tech tensions remain unresolved as Trump returns from Asia",
+  "The bull market has a new problem. The 'smart money' is selling",
+  "Bitcoin suffered identical sell-off pattern ahead of Anthropic, SpaceX IPOs — what happens next?",
+  "SpaceX’s subsidiary Cursor tells lawmakers it's considering phasing out Chinese AI models",
+  "Cathie Wood's ARK Invest was a big buyer of Anthropic, tells CNBC she's 'quite optimistic'",
+  "A24 is having a great year at the box office. That could give HBO Max a streaming edge",
+  "Bitcoin's regulation bull case is played out. What could drive crypto gains moving forward"
+ ],
+ "trump": [
+  {
+   "hora": "Fri, 20 Nov 2026 13:03:07 +0000",
+   "texto": "RT   @ Schoenlaw   By engaging in an unprecedented tripartite summit with the leaders of China and Russia, countries with which we have profound differences, President Trump not only continues his well-founded policy of always seeking to keep dialogue open, but that policy is consistent with the great statesmen of generations past: Abraham Lincoln: “Do I not destroy my enemies when I make them my ",
+   "enlace": "https://www.trumpstruth.org/statuses/43646",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 01:51:30 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43645",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 00:47:46 +0000",
+   "texto": "How Pete Hegseth and Stephen Miller Have Partnered on Key Issues in Trump’s Administration:   https://www.  breitbart.com/politics/2026/11  /11/how-pete-hegseth-and-stephen-miller-have-partnered-on-key-issues-in-trumps-administration/",
+   "enlace": "https://www.trumpstruth.org/statuses/43644",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 00:47:13 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43643",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 00:37:35 +0000",
+   "texto": "The Factories Are Coming Home, ISM Just Confirmed It:   https://www.  realclearmarkets.com/articles/  2026/11/02/the_factories_are_coming_home_ism_just_confirmed_it_1214700.html",
+   "enlace": "https://www.trumpstruth.org/statuses/43642",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 00:32:32 +0000",
+   "texto": "President of the United States Donald J. Trump and The John F. Kennedy Center for the Performing Arts Announce the 49th Class of Honorees:   https://www.  kennedy-center.org/news-room/p  ress-release-landing-page/49th-kc-honorees/",
+   "enlace": "https://www.trumpstruth.org/statuses/43641",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Fri, 20 Nov 2026 00:30:08 +0000",
+   "texto": "ABC News Puts 2 on Leave Over Flawed Trump Jr. Story:   https://www.  newsmax.com/us/abc-news-donald  -trump-jr-anduril-industries/2026/11/18/id/1276821/",
+   "enlace": "https://www.trumpstruth.org/statuses/43640",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:48:28 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43639",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:26:38 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43638",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:18:34 +0000",
+   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117645423615781506    View image   Quoted  Donald J. Trump       View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43636",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:18:23 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43637",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:17:33 +0000",
+   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117645411680534943    View image   Quoted  Donald J. Trump       View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43635",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 22:15:21 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43634",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 21:11:22 +0000",
+   "texto": "I have just given a Complete and Total Pardon to the Late, Great Pete Rose, a true Baseball SUPERSTAR &amp; LEGEND, whose record of 4,256 Hits in a Season will never be broken. In addition, Pete played 3,562 career games (Highest Ever!), had 1,314 Runs batted in, 160 Home Runs, a .303 Batting Average, was a 17x All-Star, 3x World Series Champion, NL MVP, World Series MVP, NL Rookie of the Year, 2x",
+   "enlace": "https://www.trumpstruth.org/statuses/43633",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 19:35:37 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43632",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 19:20:38 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43631",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 17:01:03 +0000",
+   "texto": "Heading back to Washington, D.C., from China. It was a Great and Highly Consequential Trip. I will be giving a News Conference tomorrow at 12 P.M., the White House. Also, will be discussing the Trade Deals with Thailand, the Philippines, and others. President DONALD J. TRUMP",
+   "enlace": "https://www.trumpstruth.org/statuses/43630",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 16:58:46 +0000",
+   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117644162493926914    View image   Quoted  Donald J. Trump       View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43628",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 16:57:39 +0000",
+   "texto": "View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43629",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 19 Nov 2026 13:46:41 +0000",
+   "texto": "Congratulations to Anderson University Women’s Volleyball Team on winning the South Atlantic Conference. Congratulations also to Ellie Nieporte, the daughter of John Nieporte, one of our Country’s absolutely best Senior Pro Golfers, who was awarded Tournament MVP. Genetics in the Nieporte family are GREAT! John’s father, Tom, was a Great Tour Pro. President DONALD J. TRUMP   View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43627",
+   "habla_de_mercado": true
+  }
+ ],
+ "nasdaq_futuro": {
+  "precio": 26215.5,
+  "cierre_anterior": 26600.25,
+  "cambio": -0.014464149773028456
+ },
+ "sp_futuro": {
+  "precio": 7162.75,
+  "cierre_anterior": 7197.25,
+  "cambio": -0.004793497516412559
+ },
+ "vix": {
+  "precio": 29.46,
+  "cierre_anterior": 28.440000534057617,
+  "cambio": 0.03586495945106982
+ },
+ "vix9d": {
+  "precio": 29.26,
+  "cierre_anterior": 29.260000228881836,
+  "cambio": -7.822345660102314e-09
+ },
+ "dealers": {
+  "fecha": "2026-11-19",
+  "dix": 0.4308,
+  "dix_pct": 0.16,
+  "gex": -0.9,
+  "gex_pct": 0.02
+ },
+ "fondos": {
+  "reporte": "2026-11-10",
+  "neto_apalancados": 0.0421,
+  "cambio_semana": 0.0223,
+  "lectura": "normal"
+ },
+ "marcas": {
+  "decision_fed": false,
+  "minutas_fed": false,
+  "cpi": false,
+  "empleo_nfp": false,
+  "pce": false,
+  "gigantes_reportaron_ayer_tras_cierre": [],
+  "gigantes_reportan_hoy_antes": [],
+  "gigantes_reportan_hoy_tras_cierre": [],
+  "gap_nasdaq_futuro": -0.014464149773028456,
+  "vix": 29.46,
+  "vix9d_vix": 1.029,
+  "dix_pct": 0.16,
+  "gex_pct": 0.02,
+  "fondos_semana": "normal",
+  "trump_posts_de_mercado": 4
+ }
+}
