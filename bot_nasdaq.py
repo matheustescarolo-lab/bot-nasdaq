@@ -192,8 +192,10 @@ def leer_estado():
 
 
 def guardar_estado(e):
-    with open(ESTADO, 'w', encoding='utf-8') as fh:
+    tmp = ESTADO + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as fh:
         json.dump(e, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, ESTADO)
 
 
 def examen_nuevo(e, v, hoy, n_prev=0):
@@ -230,8 +232,10 @@ def posicion(sym, clave):
 def opero_hoy(clave, hoy):
     """¿Ya hubo alguna entrada de esta estrategia hoy? (para no volver a entrar en el rango de 30 min después de un stop)."""
     desde = dt.datetime.now(UTC) - dt.timedelta(days=2)
-    ds = mt5.history_deals_get(desde, dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
-    return any(d.magic == MAGIC[clave] and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds)
+    ds = mt5.history_deals_get(desde, dt.datetime.now(UTC) + dt.timedelta(days=1))
+    if ds is not None and any(d.magic == MAGIC[clave] and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds):
+        return True
+    return entrada_anotada(clave, hoy)
 
 
 def salio_por_stop(clave, desde_ny):
@@ -248,8 +252,9 @@ def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
     if t is None or info is None or t.bid <= 0:
         log('error', NOMBRE[clave], detalle=f'sin precio ({mt5.last_error()})'); return None
     precio = t.ask if lado > 0 else t.bid
+    pt = info.point or 0.01
     req = dict(action=mt5.TRADE_ACTION_DEAL, symbol=sym, volume=float(lotes), price=precio, magic=MAGIC[clave],
-               type=mt5.ORDER_TYPE_BUY if lado > 0 else mt5.ORDER_TYPE_SELL, deviation=max(20, int(precio * 0.001 / info.point)),
+               type=mt5.ORDER_TYPE_BUY if lado > 0 else mt5.ORDER_TYPE_SELL, deviation=max(20, int(precio * 0.001 / pt)),
                comment=clave, type_time=mt5.ORDER_TIME_GTC)
     if ticket is not None:
         req['position'] = ticket
@@ -286,6 +291,9 @@ def cancelar_pendientes(sym, clave, motivo):
 def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     """Orden stop en el servidor: se llena en cuanto el precio toca el nivel (sin esperar al ciclo de 10 s del bot)."""
     info = mt5.symbol_info(sym)
+    if info is None:
+        log('error', NOMBRE[clave], detalle=f'sin info del símbolo para orden pendiente ({mt5.last_error()})')
+        return False
     req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=round(precio, info.digits),
                sl=round(sl, info.digits), magic=MAGIC[clave], comment=clave,
                type=mt5.ORDER_TYPE_BUY_STOP if lado > 0 else mt5.ORDER_TYPE_SELL_STOP)
@@ -296,14 +304,25 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
             if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
                 log('pendiente', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{precio:.2f}', f'{motivo} · stop {sl:,.2f}')
                 return True
+            if r is None or r.retcode not in (10030, 10022):   # solo reintenta otro filling/expiración si el broker rechazó ese tipo
+                break
+        if r is None or r.retcode not in (10030, 10022):
+            break
     log('error', NOMBRE[clave], detalle=f"no pude poner la orden pendiente: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
     return False
+
+
+def _fecha_ny_log(hora_utc_txt):
+    try:
+        return dt.datetime.strptime(hora_utc_txt, '%Y-%m-%d %H:%M:%S').replace(tzinfo=UTC).astimezone(NY).date()
+    except Exception:
+        return None
 
 
 def entrada_anotada(clave, hoy):
     try:
         with open(BITACORA, encoding='utf-8') as fh:
-            return any(f['evento'] == 'entrada' and f['estrategia'] == NOMBRE[clave] and f['hora_UTC'][:10] == f'{hoy:%Y-%m-%d}'
+            return any(f['evento'] == 'entrada' and f['estrategia'] == NOMBRE[clave] and _fecha_ny_log(f['hora_UTC']) == hoy
                        for f in csv.DictReader(fh))
     except Exception:
         return False
@@ -316,7 +335,9 @@ def cerrar(sym, clave, motivo):
         lado = -1 if p.type == mt5.POSITION_TYPE_BUY else 1
         px = enviar(sym, lado, p.volume, clave, ticket=p.ticket)
         if px is not None:
-            res = (px - p.price_open) * (-lado) * p.volume * (mt5.symbol_info(sym).trade_tick_value / mt5.symbol_info(sym).trade_tick_size)
+            info = mt5.symbol_info(sym)
+            mult = (info.trade_tick_value / info.trade_tick_size) if (info and info.trade_tick_size) else 1.0
+            res = (px - p.price_open) * (-lado) * p.volume * mult
             log('salida', NOMBRE[clave], 'venta' if lado < 0 else 'compra', p.volume, f'{px:.2f}',
                 f'{motivo} · entró a {p.price_open:.2f} · resultado aprox. {res:+,.2f} USD')
 
@@ -336,7 +357,7 @@ def caida_ayer(previos):
     return float(previos[-1].c.iloc[-1]) / float(previos[-2].c.iloc[-1]) - 1
 
 
-def sincronizar(sym, df, hoy, ahora, lotes):
+def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
     if not isinstance(lotes, dict):
         lotes = {'orb': lotes, 'ruido': lotes}
     hoy_df, previos = partir_dias(df, hoy)
@@ -361,19 +382,30 @@ def sincronizar(sym, df, hoy, ahora, lotes):
                     f'se llenó la orden pendiente del rango de 30 min ({lo:,.2f}–{hi:,.2f}) · deslizamiento {(p.price_open - nivel) * lado_r:+.2f} pts · stop {p.sl:,.2f}')
             if est == 'stop' or (lado_m != 0 and lado_m != lado_r):
                 cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
-        elif opero_hoy('orb', hoy) or est in ('stop', 'ambos') or ahora.time() >= CIERRE:
+        elif opero_hoy('orb', hoy) or est in ('stop', 'ambos') or ahora.time() >= cierre:
             if pend:
                 cancelar_pendientes(sym, 'orb', 'el rango ya se operó o ya no aplica hoy')
-        elif est == 'esperando' and not pend:
-            info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
-            dist = max(info.point, (info.trade_stops_level or 0) * info.point)
-            if t is not None and t.ask + dist < hi + info.point and t.bid - dist > lo - info.point:
-                rango = f'rango de 30 min ({lo:,.2f}–{hi:,.2f})'
-                poner_pendiente(sym, 'orb', 1, lotes['orb'], hi + info.point, lo, 'compra si rompe arriba del ' + rango)
-                poner_pendiente(sym, 'orb', -1, lotes['orb'], lo - info.point, hi, 'venta si rompe abajo del ' + rango)
-        elif est == 'activo' and not pend:
-            abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
-                  f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f}) sin orden pendiente: entra a mercado')
+        elif est == 'esperando':
+            tiene_buy = any(o.type == mt5.ORDER_TYPE_BUY_STOP for o in pend)
+            tiene_sell = any(o.type == mt5.ORDER_TYPE_SELL_STOP for o in pend)
+            if not (tiene_buy and tiene_sell):
+                info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
+                if info is not None and t is not None:
+                    pt = info.point or 0.01
+                    dist = max(pt, (info.trade_stops_level or 0) * pt)
+                    rango = f'rango de 30 min ({lo:,.2f}–{hi:,.2f})'
+                    if not tiene_buy and t.ask + dist < hi + pt:
+                        poner_pendiente(sym, 'orb', 1, lotes['orb'], hi + pt, lo, 'compra si rompe arriba del ' + rango)
+                    if not tiene_sell and t.bid - dist > lo - pt:
+                        poner_pendiente(sym, 'orb', -1, lotes['orb'], lo - pt, hi, 'venta si rompe abajo del ' + rango)
+        elif est == 'activo':
+            ya_dentro = False
+            if pend:
+                cancelar_pendientes(sym, 'orb', 'el precio ya rompió el rango: entra a mercado')
+                ya_dentro = posicion(sym, 'orb')[0] != 0 or opero_hoy('orb', hoy)   # una pendiente se llenó justo antes de cancelar
+            if not ya_dentro:
+                abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
+                      f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f}) sin orden pendiente: entra a mercado')
     # --- Zona de ruido ---
     cierre_ayer = float(previos[-1].c.iloc[-1]) if previos else None
     pos_m, info, ultimo = modelo_ruido(hoy_df, previos, cierre_ayer, ahora)
@@ -386,7 +418,11 @@ def sincronizar(sym, df, hoy, ahora, lotes):
         if lado_r != 0:
             cerrar(sym, 'ruido', 'salió de la zona · ' + info)
         if pos_m != 0:
-            precio = mt5.symbol_info_tick(sym).ask if pos_m > 0 else mt5.symbol_info_tick(sym).bid
+            t_r = mt5.symbol_info_tick(sym)
+            if t_r is None or t_r.bid <= 0 or t_r.ask <= 0:
+                log('error', NOMBRE['ruido'], detalle=f'sin tick para abrir zona de ruido ({mt5.last_error()})')
+                return
+            precio = t_r.ask if pos_m > 0 else t_r.bid
             abrir(sym, 'ruido', pos_m, lotes['ruido'], precio * (1 - STOP_EMERGENCIA * pos_m), 'cerró fuera de la zona de ruido · ' + info)
 
 
@@ -398,30 +434,40 @@ def proteger(sym, df):
     usd_pt = DOLARES_POR_PUNTO
     for clave in MAGIC:
         _, ps = posicion(sym, clave)
+        lpm = lotes_por_mnq(info)
         for p in ps:
             lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
-            desde = a_ny(p.time).replace(second=0, microsecond=0)
+            t_in = a_ny(p.time)
+            desde = t_in.replace(second=0, microsecond=0)
             desde = desde - dt.timedelta(minutes=desde.minute % 5)
+            # Si ruido entró en el último minuto de la vela previa por leve desfase de reloj (ej. 13:59:59), salta a la vela nueva
+            if clave != 'orb' and (t_in - desde).total_seconds() >= 240:
+                desde += dt.timedelta(minutes=5)
             velas_pos = df[df.index > desde] if clave == 'orb' else df[df.index >= desde]   # ORB entra a media vela: su máximo previo no cuenta
             mejor = max([t.bid] + list(velas_pos.h)) if lado > 0 else min([t.ask] + list(velas_pos.l))
-            maxima = (mejor - p.price_open) * lado * usd_pt
+            pts_max = (mejor - p.price_open) * lado
+            maxima = pts_max * usd_pt                       # umbrales en escala 1 MNQ (75 pts BE / 100 pts escalera, igual que backtest)
             piso = piso_usd(clave, maxima)
             if piso is None:
                 continue
-            nuevo = round(p.price_open + lado * piso / usd_pt, info.digits)
-            if p.sl and ((lado > 0 and nuevo <= p.sl + info.point) or (lado < 0 and nuevo >= p.sl - info.point)):
+            pts_piso = piso / usd_pt
+            mult_mnq = p.volume / max(lpm, 1e-9)
+            piso_real, max_real = piso * mult_mnq, maxima * mult_mnq
+            nuevo = round(p.price_open + lado * pts_piso, info.digits)
+            pt = info.point or 0.01
+            if p.sl and ((lado > 0 and nuevo <= p.sl + pt) or (lado < 0 and nuevo >= p.sl - pt)):
                 continue                                    # el stop ya está igual o mejor
             actual = t.bid if lado > 0 else t.ask
-            minimo = (info.trade_stops_level or 0) * info.point
+            minimo = (info.trade_stops_level or 0) * pt
             if (lado > 0 and actual - nuevo <= minimo) or (lado < 0 and nuevo - actual <= minimo):
-                cerrar(sym, clave, f'el precio ya está en el piso asegurado (+{piso:,.0f} USD)')
+                cerrar(sym, clave, f'el precio ya está en el piso asegurado (+{piso_real:,.0f} USD / +{pts_piso:.0f} pts)')
                 continue
             r = mt5.order_send(dict(action=mt5.TRADE_ACTION_SLTP, symbol=sym, position=p.ticket, sl=nuevo, tp=p.tp or 0.0,
                                     magic=MAGIC[clave]))
             if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
-                que = 'break even' if clave == 'orb' else f'escalera: asegura +{piso:,.0f} USD'
+                que = 'break even' if clave == 'orb' else f'escalera: asegura +{piso_real:,.0f} USD (+{pts_piso:.0f} pts)'
                 log('protege', NOMBRE[clave], 'compra' if lado > 0 else 'venta', p.volume, f'{nuevo:.2f}',
-                    f'{que} · llegó a ir +{maxima:,.0f} USD · stop de {p.sl:.2f} a {nuevo:.2f}')
+                    f'{que} · llegó a ir +{max_real:,.0f} USD (+{pts_max:.1f} pts) · stop de {p.sl:.2f} a {nuevo:.2f}')
             else:
                 log('error', NOMBRE[clave], detalle=f"no pude mover el stop: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
 
@@ -483,21 +529,27 @@ def cerrar_viejas(sym, hoy):
 
 def resumen(sym, hoy):
     acc = mt5.account_info()
+    if acc is None and conectado():
+        acc = mt5.account_info()
+    if acc is None:
+        log('error', detalle='no pude obtener account_info para generar el resumen diario')
+        return
     ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
     L = [f"📊 Update del bot Nasdaq{' FTMO' if CUENTA == 'ftmo' else ' (reglas FTMO)' if MODO == 'ftmo' else ''} — {hoy:%d-%m-%Y}", f'💰 Cuenta: ${acc.equity:,.2f}']
-    total = 0.0
+    total, total_ops = 0.0, 0
     for clave in MAGIC:
         mios = [d for d in ds if d.magic == MAGIC[clave] and a_ny(d.time).date() == hoy]
         pnl = sum(d.profit + d.commission + d.swap + getattr(d, 'fee', 0.0) for d in mios)
         n = sum(1 for d in mios if d.entry == mt5.DEAL_ENTRY_IN)
-        total += pnl
+        total += pnl; total_ops += n
         L.append(f"• {NOMBRE[clave]}: {'sin operaciones' if n == 0 else f'{n} operación(es) · {pnl:+,.2f} USD'}")
     L.append(f'🧮 Total del día: {total:+,.2f} USD (base {CONTRATOS} MNQ por estrategia, ajustado por volatilidad)')
-    L += ftmo_cierre(acc.equity, hoy) if MODO == 'ftmo' else cerrar_dia_examen(acc.equity, hoy)
+    opero = total_ops > 0 or any(entrada_anotada(c, hoy) for c in MAGIC)
+    L += ftmo_cierre(acc.equity, hoy, opero=opero) if MODO == 'ftmo' else cerrar_dia_examen(acc.equity, hoy)
     errores = 0
     try:
         with open(BITACORA, encoding='utf-8') as fh:
-            errores = sum(1 for f in csv.DictReader(fh) if f['evento'] == 'error' and f['hora_UTC'][:10] >= f'{hoy:%Y-%m-%d}')
+            errores = sum(1 for f in csv.DictReader(fh) if f['evento'] == 'error' and _fecha_ny_log(f['hora_UTC']) == hoy)
     except Exception:
         pass
     L.append(f'⚠️ {errores} error(es) hoy: revisa {os.path.basename(BITACORA)}' if errores else '✅ Sin errores')
@@ -561,14 +613,18 @@ def ftmo_dia(e, eq, hoy):
 
 
 def hubo_operaciones(hoy):
-    try:
-        ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1)) or []
-        return any(d.magic in MAGIC.values() and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds)
-    except Exception:
-        return True
+    for _ in range(3):
+        try:
+            ds = mt5.history_deals_get(dt.datetime.now(UTC) - dt.timedelta(days=2), dt.datetime.now(UTC) + dt.timedelta(days=1))
+            if ds is not None:
+                return any(d.magic in MAGIC.values() and d.entry == mt5.DEAL_ENTRY_IN and a_ny(d.time).date() == hoy for d in ds)
+        except Exception:
+            pass
+        time.sleep(1)
+    return any(entrada_anotada(c, hoy) for c in MAGIC)
 
 
-def ftmo_cierre(equity, hoy):
+def ftmo_cierre(equity, hoy, opero=None):
     e = leer_estado(); f = e.get('ftmo'); d = e.get('dia', {})
     if not f:
         return []
@@ -585,7 +641,7 @@ def ftmo_cierre(equity, hoy):
         f['aprobada'] = 'agotado'
         L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO (equity {equity:,.0f}): el bot deja de operar esta cuenta. Compra un reto nuevo, cambia los secretos y BOT_FTMO_ETAPA.")
         guardar_estado(e); return L
-    opero = hubo_operaciones(hoy)                  # FTMO solo cuenta como día de trading el que tiene al menos una operación
+    opero = hubo_operaciones(hoy) if opero is None else bool(opero)   # FTMO solo cuenta como día de trading el que tiene al menos una operación
     f['dias'] += 1 if opero else 0; f['cierre_prev'] = equity
     gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
     if ETAPA == 'fondeada':
@@ -713,8 +769,13 @@ def main():
         f_orb *= f_ev
         log('tamaño', detalle=f"{' y '.join(motivos)} → ×{f_ev:g}")
     f_ruido = f_orb
+    df_ini = velas(sym)
+    prev0 = []
+    if df_ini is not None and len(df_ini) > 0:
+        _, prev0 = partir_dias(df_ini, hoy)
     try:
-        _, prev0 = partir_dias(velas(sym), hoy)
+        if not prev0:
+            raise ValueError('sin días previos disponibles')
         ay = prev0[-1]; pos_ayer = (float(ay.c.iloc[-1]) - float(ay.l.min())) / max(float(ay.h.max() - ay.l.min()), 1e-9)
         f_c = 1.5 if pos_ayer > CIERRE_FUERTE else 0.5 if pos_ayer < CIERRE_DEBIL else 1.0
         if f_c != 1.0:
@@ -767,20 +828,19 @@ def main():
     if MODO != 'ftmo' and (est.get('dia', {}).get('fecha') != str(hoy) or 'v' not in est.get('dia', {})):
         vs = {}
         for v, base in VERSIONES.items():
-            n_v = max(1, round(base * peso))
-            if r9 and r9 > MIEDO_CORTO:
-                n_v = max(1, round(n_v * 0.5))
-            n_v = max(1, round(n_v * f_ev))
+            n_v = max(1, round(base * f_orb))
             vs[v] = dict(n=n_v, f=n_v / n_mnq, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
         est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, v=vs)
     guardar_estado(est)
     if MODO != 'ftmo':
         meta_txt = ' · '.join(f"{v} {s['n']} MNQ meta +{s['meta']:,.0f}" for v, s in est['dia']['v'].items())
-    log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes:g} lotes por estrategia (≈{n_mnq} MNQ) · equity {acc.equity:,.2f} · '
+    lotes_txt = (f'{lotes:g} lotes por estrategia (≈{n_mnq} MNQ)' if lotes == lotes_ruido
+                 else f'ORB {lotes:g} lotes (≈{n_mnq} MNQ) · ruido {lotes_ruido:g} lotes (≈{n_ruido} MNQ)')
+    tipo_cta = 'cuenta demo' if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else f'cuenta {CUENTA.upper()}'
+    log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes_txt} · equity {acc.equity:,.2f} · '
                           f'{meta_txt} · '
-                          f'cuenta demo · trabaja hasta las {hasta:%H:%M} NY')
+                          f'{tipo_cta} · trabaja hasta las {hasta:%H:%M} NY')
     try:
-        _, prev0 = partir_dias(velas(sym), hoy)
         r1 = caida_ayer(prev0)
         if r1 is not None and r1 < CAIDA_RUIDO:
             log('filtro', detalle=f'ayer el Nasdaq cerró {r1:+.2%}: hoy no opera la zona de ruido' + (' ni el rango de 30 min' if r1 < CAIDA_ORB else ''))
@@ -815,7 +875,10 @@ def main():
         try:
             if not conectado():
                 raise RuntimeError(f'sin conexión con MT5 ({mt5.last_error()})')
-            eq = mt5.account_info().equity
+            acc_now = mt5.account_info()
+            if acc_now is None:
+                raise RuntimeError(f'account_info devolvió None ({mt5.last_error()})')
+            eq = acc_now.equity
             d = est['dia']
             if eq < d['min_eq']:
                 d['min_eq'] = eq
@@ -850,7 +913,7 @@ def main():
                 guardar_estado(est)
             df = velas(sym)
             if df is not None and not d['cerrado']:
-                sincronizar(sym, df, hoy, ahora, {'orb': lotes, 'ruido': lotes_ruido})
+                sincronizar(sym, df, hoy, ahora, {'orb': lotes, 'ruido': lotes_ruido}, cierre=cierre)
                 sacudida(sym, df, hoy)
                 proteger(sym, df)
             anotar_salidas(sym, hoy, est)

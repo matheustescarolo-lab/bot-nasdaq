@@ -60,7 +60,7 @@ def yahoo(sym):
     prev = None
     if cierres:                                   # si la última vela es de hoy, el cierre anterior es la penúltima
         prev = cierres[-2] if (dias and dias[-1] >= hoy and len(cierres) > 1) else cierres[-1]
-    return dict(precio=precio, cierre_anterior=prev, cambio=(precio / prev - 1) if precio and prev else None)
+    return dict(precio=precio, cierre_anterior=prev, cambio=(precio / prev - 1) if (precio is not None and prev) else None)
 
 
 def titulares(n=8):
@@ -68,7 +68,7 @@ def titulares(n=8):
     return [i.findtext('title') for i in raiz.iter('item')][:n]
 
 
-PALABRAS_MERCADO = re.compile(r'tariff|arancel|china|fed\b|powell|rate|interest|market|stock|trade deal|deal|sanction|nvidia|apple|chip|semiconductor|tax|dollar|oil|war|iran|russia', re.I)
+PALABRAS_MERCADO = re.compile(r'\b(?:tariffs?|arancel(?:es)?|china|fed|powell|rates?|interest|markets?|stocks?|trade deal|deals?|sanctions?|nvidia|apple|chips?|semiconductors?|tax(?:es)?|dollar|oil|war|iran|russia)\b', re.I)
 
 
 def trump(n=20):
@@ -88,7 +88,9 @@ def trump(n=20):
 def dealers():
     """DIX (compra en dark pools) y GEX (gamma de los dealers) de SqueezeMetrics: último día y su percentil en 1 año."""
     filas = bajar('https://squeezemetrics.com/monitor/static/DIX.csv', 30).decode().strip().splitlines()[1:]
-    f = [r.split(',') for r in filas[-250:]]
+    f = [r.split(',') for r in filas[-250:] if len(r.split(',')) >= 4]
+    if not f:
+        return None
     dix = [float(r[2]) for r in f]; gex = [float(r[3]) for r in f]
     pct = lambda xs: round(sum(x <= xs[-1] for x in xs) / len(xs), 2)
     return dict(fecha=f[-1][0], dix=round(dix[-1], 4), dix_pct=pct(dix), gex=round(gex[-1] / 1e9, 2), gex_pct=pct(gex))
@@ -107,7 +109,13 @@ def fondos(hoy):
         except Exception:
             pass
     filas.sort(key=lambda r: r['Report_Date_as_YYYY-MM-DD'])
-    neto = lambda r: (float(r['Lev_Money_Positions_Long_All']) - float(r['Lev_Money_Positions_Short_All'])) / float(r['Open_Interest_All'])
+    if len(filas) < 2:
+        return None
+    def neto(r):
+        oi = float(r['Open_Interest_All'])
+        if oi <= 0:
+            raise ValueError('Open_Interest_All <= 0 en COT')
+        return (float(r['Lev_Money_Positions_Long_All']) - float(r['Lev_Money_Positions_Short_All'])) / oi
     a, b = filas[-2], filas[-1]; cambio = neto(b) - neto(a)
     return dict(reporte=b['Report_Date_as_YYYY-MM-DD'], neto_apalancados=round(neto(b), 4), cambio_semana=round(cambio, 4),
                 lectura='recortaron fuerte' if cambio < -0.0259 else 'aumentaron fuerte' if cambio > 0.0233 else 'normal')

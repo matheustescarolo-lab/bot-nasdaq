@@ -33,6 +33,16 @@ jobs:
         with:
           name: contexto
           path: contexto/
+      - name: Guardar contexto en el repositorio
+        if: inputs.prueba != true
+        shell: bash
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          git add contexto
+          git diff --cached --quiet && exit 0
+          git commit -m "Contexto diario $(date -u +%Y-%m-%d)"
+          for i in 1 2 3 4 5; do git pull -q --rebase && git push && break; sleep $((RANDOM % 10 + 3)); done
 
   operar:
     # Dos cuentas a la vez con la misma llamada de cron-job.org: Tickmill (demo, 3 versiones de Lucid) y FTMO (reto 2-Step)
@@ -48,15 +58,18 @@ jobs:
             mnq: '6'           # demo con las MISMAS reglas que el reto FTMO real: 100K virtuales, 6 MNQ, tope 2×, meta +10%/+5%, límites 5%/10%
             modo: 'ftmo'
             etapa: 'reto'
+            ftmo_inicial: '100000'
             instalador: https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe
           - cuenta: ftmo
             mnq: '6'           # reto moderado (meta: FTMO 100K a €439, un reto a la vez): 4 retos → cobra ~72–87%, profit típico 12 m +$16.7k a +$26.4k
             instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
             etapa: 'reto'      # prueba gratis: fase 1 y 2 en la misma cuenta. Reto pagado: 'fase1' → 'fase2' (cuenta nueva) → 'fondeada' con mnq '4'
+            ftmo_inicial: '100000'
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
       BOT_MNQ: ${{ matrix.mnq }}
       BOT_FTMO_ETAPA: ${{ matrix.etapa || 'reto' }}
+      BOT_FTMO_INICIAL: ${{ matrix.ftmo_inicial || '100000' }}
       BOT_MODO: ${{ matrix.modo || '' }}
       MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || matrix.cuenta == 'tickmill' && secrets.MT5_LOGIN || '' }}
       MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || matrix.cuenta == 'tickmill' && secrets.MT5_PASSWORD || '' }}
@@ -118,10 +131,13 @@ jobs:
           $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
           $txt = "[Common]`r`nLogin=$env:MT5_LOGIN`r`nPassword=$env:MT5_PASSWORD`r`nServer=$env:MT5_SERVER`r`n" +
                  "[Experts]`r`nAllowLiveTrading=1`r`nAllowDllImport=0`r`nEnabled=1`r`nAccount=0`r`nProfile=0`r`n"
-          [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
-          Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
-          Start-Sleep -Seconds 60
-          Remove-Item $ini -Force
+          try {
+            [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
+            Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
+            Start-Sleep -Seconds 60
+          } finally {
+            if (Test-Path $ini) { Remove-Item $ini -Force }
+          }
 
       - name: Traer el contexto bajado en Linux
         if: env.SALTAR != '1'
@@ -157,7 +173,11 @@ jobs:
         run: |
           git config user.name "bot-nasdaq"
           git config user.email "bot-nasdaq@users.noreply.github.com"
-          for f in bitacora_nasdaq*.csv estado_nasdaq*.json contexto; do if [ -e $f ]; then git add $f; fi; done
+          SUF=""
+          if [ "$BOT_CUENTA" != "tickmill" ]; then SUF="_${BOT_CUENTA}"; fi
+          for f in "bitacora_nasdaq${SUF}.csv" "estado_nasdaq${SUF}.json"; do
+            if [ -e "$f" ]; then git add "$f"; fi
+          done
           git diff --cached --quiet && exit 0
           git commit -m "Bitacora y estado Nasdaq ($BOT_CUENTA) $(date -u +%Y-%m-%d)"
-          for i in 1 2 3 4 5; do git pull -q --rebase -X theirs && git push && break; sleep $((RANDOM % 20 + 5)); done
+          for i in 1 2 3 4 5; do git pull -q --rebase -X theirs && git push && break; sleep $((RANDOM % 20 + 5)); done   # en conflicto gana el estado del bot

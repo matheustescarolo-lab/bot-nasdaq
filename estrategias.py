@@ -74,7 +74,8 @@ def modelo_ruido(hoy, previos, cierre_ayer, ahora_ny):
     hist = [movimientos(d) for d in previos[-LOOK:]]
     op = float(hoy.o.iloc[0])
     tp = (hoy.h + hoy.l + hoy.c) / 3
-    vw = np.cumsum(tp.values * hoy.v.values) / np.maximum(np.cumsum(hoy.v.values), 1)
+    cum_v = np.cumsum(hoy.v.values)
+    vw = np.where(cum_v > 0, np.cumsum(tp.values * hoy.v.values) / np.maximum(cum_v, 1), tp.values)
     pos, info, ultimo = 0, '', None
     for i in chequeos_ruido(hoy, ahora_ny):
         sg = sigma(hist, i)

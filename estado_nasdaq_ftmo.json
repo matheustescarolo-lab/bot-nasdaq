@@ -1,22 +1,23 @@
 {
  "ftmo": {
   "fase": 1,
-  "inicio": "2026-11-20",
-  "base": 100000,
-  "cierre_prev": 118000,
-  "dias": 6,
+  "inicio": "2026-11-18",
+  "base": 100000.0,
+  "cierre_prev": 97817.5,
+  "dias": 1,
   "listo": false,
-  "login": 1,
-  "etapa": "fondeada"
+  "login": null,
+  "etapa": "reto"
  },
  "dia": {
-  "fecha": "2026-11-20",
-  "eq_inicio": 100000,
-  "min_eq": 100000,
+  "fecha": "2026-11-18",
+  "eq_inicio": 100000.0,
+  "min_eq": 97817.5,
   "cerrado": false,
   "quemado": false,
-  "meta": 1000000000000.0,
+  "meta": 10050.0,
   "piso": 95000.0,
-  "obj": 110000.0
+  "obj": 110000.0,
+  "resumido": "2026-11-18"
  }
 }

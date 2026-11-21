@@ -1,0 +1,19 @@
+name: Pruebas unitarias (bot Nasdaq)
+
+on:
+  push:
+    branches: [main]
+    paths: ['**.py', '.github/workflows/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -q pandas numpy tzdata
+      - run: python -m unittest discover -s tests -v
