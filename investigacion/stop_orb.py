@@ -8,7 +8,7 @@ for k in range(14,len(arr)):
     no=min(round(BASE*mo[i]),2*BASE)
     if no==0: continue
     for s,e,x,a,b in orb_v(g,True,True):
-        adv=[(e-g.l[t])/e if s==1 else (g.h[t]-e)/e for t in range(a+1,b+1)]
+        adv=[(e-g.l[t])/e if s==1 else (g.h[t]-e)/e for t in range(a,b+1)]
         T.append((no,max([0]+adv),s*(x-e)/e))
 T=np.array(T); n,mae,res=T.T; dias=len(T)
 print(f'ORB: {len(T)} operaciones · ${(res*P*2*n).sum()/len(T):,.0f} por operación (base {BASE}, precio 27,000)')
