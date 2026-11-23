@@ -259,6 +259,37 @@ class TestBotLogica(unittest.TestCase):
         self.assertAlmostEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 30.0, 27000.0, 'ruido'), 26.82)
         self.assertEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 24.0, 27000.0, 'ruido'), 24.0)
 
+    def test_tope_stop_acerca_el_stop_si_pasa_de_4500(self):
+        # 12 lotes de $1/punto (6 MNQ): $4,500 = 375 puntos. Rango de 600 pts -> el stop sube a entrada − 375
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=types.SimpleNamespace(
+            trade_tick_value=0.01, trade_tick_size=0.01, digits=2))
+        orig = bot_nasdaq.TOPE_POSICION_USD
+        bot_nasdaq.TOPE_POSICION_USD = 4500.0
+        try:
+            self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26400.0), (26625.0, True))
+            self.assertEqual(bot_nasdaq.tope_stop('USTEC', -1, 12.0, 27000.0, 27600.0), (27375.0, True))
+            # stop ya más cerca que el tope: no se toca
+            self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26800.0), (26800.0, False))
+            # modo sin tope (Lucid): no se toca
+            bot_nasdaq.TOPE_POSICION_USD = None
+            self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26400.0), (26400.0, False))
+        finally:
+            bot_nasdaq.TOPE_POSICION_USD = orig
+
+    def test_pendiente_sale_con_stop_de_seguridad(self):
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=types.SimpleNamespace(
+            trade_tick_value=0.01, trade_tick_size=0.01, digits=2, point=0.01, volume_step=0.01, volume_min=0.01))
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=None)       # sin datos de margen: no recorta
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        orig = bot_nasdaq.TOPE_POSICION_USD
+        bot_nasdaq.TOPE_POSICION_USD = 4500.0
+        try:
+            self.assertTrue(bot_nasdaq.poner_pendiente('USTEC', 'orb', -1, 12.0, 26999.99, 27600.0, 'prueba'))
+        finally:
+            bot_nasdaq.TOPE_POSICION_USD = orig
+        self.assertEqual(enviadas[0]['sl'], 27374.99)
+
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba
         p = ROOT / 'estado_nasdaq_ftmo.json'

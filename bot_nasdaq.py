@@ -27,6 +27,7 @@ FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital i
 ETAPA = os.environ.get('BOT_FTMO_ETAPA', 'reto')   # reto (fase 1 y 2 simuladas en la misma cuenta) | fase1 | fase2 | fondeada
 TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
 FTMO_APALANCAMIENTO = float(os.environ.get('BOT_FTMO_APALANCAMIENTO', '15'))   # FTMO Swing: 1:15 en índices (Standard 1:50)
+TOPE_POSICION_USD = 0.045 * FTMO_INICIAL if MODO == 'ftmo' else None   # stop de seguridad en el servidor: ninguna posición pierde más de $4,500 (100K) si el bot se cae
 MARGEN_RESERVA = 0.85          # usa como máximo 85% del margen libre al abrir
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
@@ -40,7 +41,7 @@ EXAMEN_META, EXAMEN_MLL, EXAMEN_BLOQUEO = 3000.0, 2000.0, 2100.0  # reglas de Lu
 ESTADO = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'estado_nasdaq{SUF}.json')
 MAGIC = {'orb': 301, 'ruido': 302}
 NOMBRE = {'orb': 'Rango 30 min', 'ruido': 'Zona de ruido'}
-STOP_EMERGENCIA = 0.025          # zona de ruido: stop en el servidor a 2.5% en contra (por si el bot se cae con la posición abierta)
+STOP_EMERGENCIA = 0.01           # zona de ruido: stop en el servidor a 1% en contra (por si el bot se cae con la posición abierta)
 CIERRE = T('15:55')
 FIN_MANANA = T('12:50')
 FERIADOS = {'2026-11-26', '2026-12-25', '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
@@ -308,6 +309,19 @@ def lotes_por_margen(sym, lado, lotes, precio, clave, reserva=MARGEN_RESERVA):
         return lotes
 
 
+def tope_stop(sym, lado, lotes, precio, sl):
+    """Acerca el stop del servidor para que la posición no pueda perder más de TOPE_POSICION_USD si el bot se cae.
+    Medido en 8 años: salta en ~1–3% de las operaciones y no cambia el resultado (+$0.06/día ruido, −$1.8 por operación ORB)."""
+    info = mt5.symbol_info(sym)
+    if TOPE_POSICION_USD is None or info is None or lotes <= 0 or not precio or sl is None:
+        return sl, False
+    dmax = TOPE_POSICION_USD / (lotes * _usd_punto_lote(info))
+    nuevo = max(sl, precio - dmax) if lado > 0 else min(sl, precio + dmax)
+    if nuevo == sl:
+        return sl, False
+    return round(nuevo, info.digits), True
+
+
 def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
     t, info = mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
     if t is None or info is None or t.bid <= 0:
@@ -358,6 +372,9 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     lotes = lotes_por_margen(sym, lado, lotes, precio, clave)
     if lotes <= 0:
         return False
+    sl, topado = tope_stop(sym, lado, lotes, precio, sl)
+    if topado:
+        motivo += f' · stop de seguridad a ${TOPE_POSICION_USD:,.0f}'
     req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=round(precio, info.digits),
                sl=round(sl, info.digits), magic=MAGIC[clave], comment=clave,
                type=mt5.ORDER_TYPE_BUY_STOP if lado > 0 else mt5.ORDER_TYPE_SELL_STOP)
@@ -411,6 +428,9 @@ def abrir(sym, clave, lado, lotes, sl, motivo):
     lotes = lotes_por_margen(sym, lado, lotes, (t.ask if lado > 0 else t.bid) if t is not None else 0.0, clave)
     if lotes <= 0:
         return
+    sl, topado = tope_stop(sym, lado, lotes, (t.ask if lado > 0 else t.bid) if t is not None else 0.0, sl)
+    if topado:
+        motivo += f' · stop de seguridad a ${TOPE_POSICION_USD:,.0f}'
     px = enviar(sym, lado, lotes, clave, sl=sl)
     if px is not None:
         log('entrada', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{px:.2f}',
