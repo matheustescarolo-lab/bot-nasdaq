@@ -587,7 +587,9 @@ class TestBotLogica(unittest.TestCase):
         orig = (bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb)
         abiertas = []
         bot_nasdaq.modelo_ruido = lambda *a, **k: (-1, 'gira a venta', dt.datetime(2026, 11, 20, 11, 0))
-        bot_nasdaq.cerrar = lambda *a, **k: False                     # el cierre falla (requote)
+        cerradas = []
+        bot_nasdaq.cerrar = lambda *a, **k: cerradas.append(a[1]) or False   # el cierre falla (requote)
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=100.0, ask=100.5))
         bot_nasdaq.abrir = lambda *a, **k: abiertas.append(a)
         bot_nasdaq.niveles_orb = lambda *a, **k: None
         idx = pd.date_range('2026-11-20 09:30', periods=19, freq='5min')
@@ -599,6 +601,7 @@ class TestBotLogica(unittest.TestCase):
         finally:
             bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb = orig
         self.assertEqual(abiertas, [])
+        self.assertEqual(cerradas, ['ruido'])                          # intentó cerrar y, al fallar, no abrió el lado contrario
 
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba
