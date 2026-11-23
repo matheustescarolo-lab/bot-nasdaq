@@ -267,6 +267,14 @@ def salio_por_stop(clave, desde_ny):
 _AVISO_MARGEN = {}
 
 
+def log_cada(clave_aviso, *a, cada=300, **k):
+    """Igual que log(), pero el mismo aviso como máximo una vez cada `cada` segundos (no llena la bitácora cada 2 s)."""
+    ahora_m = time.time()
+    if ahora_m - _AVISO_MARGEN.get(clave_aviso, 0) >= cada:
+        _AVISO_MARGEN[clave_aviso] = ahora_m
+        log(*a, **k)
+
+
 def _usd_punto_lote(info):
     return info.trade_tick_value / info.trade_tick_size if info.trade_tick_size else 1.0
 
@@ -370,7 +378,8 @@ def _stop_por_usd(info, lado, lotes, precio, usd):
     if tv <= 0 or ts <= 0 or lotes <= 0 or precio <= 0 or lado not in (1, -1):
         return None
     d = max(0.0, usd) / (lotes * tv / ts)
-    return round(_a_tick(precio - d, ts, True) if lado > 0 else _a_tick(precio + d, ts, False), info.digits)
+    g = _rejilla(info)
+    return round(_a_tick(precio - d, g, True) if lado > 0 else _a_tick(precio + d, g, False), info.digits)
 
 
 def tope_stop(sym, lado, lotes, precio, sl, usd=None):
@@ -409,7 +418,7 @@ def asegurar_tope(sym):
     usd = TOPE_POSICION_USD if m is None else min(TOPE_POSICION_USD, m)
     pt = info.point or 0.01
     minimo = max((info.trade_stops_level or 0) * pt, pt)
-    paso = max(1.0, 5 * ((getattr(info, 'trade_tick_size', 0) or 0) or pt))
+    paso = max(1.0, 5 * _rejilla(info))
     txt = f'máx ${TOPE_POSICION_USD:,.0f} desde la entrada' + (f'; margen realizado antes del freno ${m:,.0f}' if m is not None else '')
     for clave in MAGIC:
         _, ps = posicion(sym, clave)
@@ -435,15 +444,20 @@ def asegurar_tope(sym):
                 log('error', NOMBRE[clave], detalle=f"no pude poner el stop de seguridad: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
         for o in pendientes(sym, clave):
             lado = 1 if o.type == mt5.ORDER_TYPE_BUY_STOP else -1
-            if usd < TOPE_MIN_USD:
+            m_o = margen_ftmo(sym, o.volume_current)                         # para entrar: lo menor entre balance y equity, colchón con su volumen
+            m_r = margen_ftmo(sym, o.volume_current, solo_realizado=True)    # para su stop: lo realizado
+            usd_o = TOPE_POSICION_USD if m_r is None else min(TOPE_POSICION_USD, m_r)
+            nuevo = _stop_por_usd(info, lado, o.volume_current, o.price_open, usd_o)
+            mas_cerca = nuevo is not None and (not o.sl or (nuevo - o.sl) * lado > 0)          # solo importa si el tope acercaría el stop
+            sin_espacio = mas_cerca and ((lado > 0 and o.price_open - nuevo <= minimo) or (lado < 0 and nuevo - o.price_open <= minimo))
+            if (m_o is not None and m_o < TOPE_MIN_USD) or usd_o < TOPE_MIN_USD or sin_espacio:
                 r = mt5.order_send(dict(action=mt5.TRADE_ACTION_REMOVE, order=o.ticket))
                 if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
                     log('cancela', NOMBRE[clave], 'compra' if lado > 0 else 'venta', o.volume_current, f'{o.price_open:.2f}',
-                        f'orden pendiente cancelada: sin margen antes del límite FTMO ({txt}) · orden {o.ticket}')
+                        f'orden pendiente cancelada: sin margen antes del límite FTMO (margen al llenarse ${(m_o if m_o is not None else usd_o):,.0f}) · orden {o.ticket}')
                 else:
                     log('error', NOMBRE[clave], detalle=f"no pude cancelar la pendiente {o.ticket} sin margen: {r.retcode if r else mt5.last_error()}")
                 continue
-            nuevo = _stop_por_usd(info, lado, o.volume_current, o.price_open, usd)
             sl = o.sl if o.sl else (-1e18 if lado > 0 else 1e18)
             if nuevo is None or (nuevo - sl) * lado < paso:
                 continue
@@ -528,17 +542,17 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
         return False
     if sl is None:
         log('error', NOMBRE[clave], detalle='orden pendiente sin stop: no la pongo'); return False
+    precio = alinear(info, precio, lado > 0)              # compra arriba / venta abajo del rango, en la rejilla de ticks
     sl_t, topado = tope_stop(sym, lado, lotes, precio, sl)
     if sl_t is None:
-        log('aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
+        log_cada(('sin_margen', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
     if topado:
         motivo += f' · stop de seguridad a ${abs(precio - sl_t) * lotes * _usd_punto_lote(info):,.0f}'
-    precio = alinear(info, precio, lado > 0)              # compra arriba / venta abajo del rango, en la rejilla de ticks
     sl = alinear(info, sl_t, lado > 0)                    # hacia el precio
     pt = info.point or 0.01
     minimo = max((info.trade_stops_level or 0) * pt, pt)
     if (lado > 0 and precio - sl <= minimo) or (lado < 0 and sl - precio <= minimo):
-        log('error', NOMBRE[clave], detalle=f'stop {sl} demasiado cerca de la orden ({precio:.2f}, mínimo {minimo:g}): no la pongo'); return False
+        log_cada(('stop_cerca', clave), 'error', NOMBRE[clave], detalle=f'stop {sl} demasiado cerca de la orden ({precio:.2f}, mínimo {minimo:g}): no la pongo'); return False
     req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=precio,
                sl=sl, magic=MAGIC[clave], comment=clave,
                type=mt5.ORDER_TYPE_BUY_STOP if lado > 0 else mt5.ORDER_TYPE_SELL_STOP)
@@ -622,7 +636,7 @@ def abrir(sym, clave, lado, lotes, sl, motivo):
         return
     sl_t, topado = tope_stop(sym, lado, lotes, px_ref, sl)
     if sl_t is None:
-        log('aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
+        log_cada(('sin_margen', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
     if topado:
         motivo += ' · stop de seguridad'
     sl = sl_t
@@ -644,6 +658,8 @@ def caida_ayer(previos):
 def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
     if not isinstance(lotes, dict):
         lotes = {'orb': lotes, 'ruido': lotes}
+    if mt5.positions_get(symbol=sym) is None or mt5.orders_get(symbol=sym) is None or not _terminal_ok():
+        return                                     # MT5 no respondió: no se decide nada a ciegas (evita duplicados)
     hoy_df, previos = partir_dias(df, hoy)
     if len(hoy_df) == 0 or hoy_df.index[0].time() > T('09:35'):
         return
@@ -688,9 +704,9 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
             if pend:
                 cancelar_pendientes(sym, 'orb', 'el precio ya rompió el rango: entra a mercado')
                 ya_dentro = posicion(sym, 'orb')[0] != 0 or opero_hoy('orb', hoy)   # una pendiente se llenó justo antes de cancelar
-                if not ya_dentro and not plano(sym, 'orb'):
-                    log('aviso', NOMBRE['orb'], detalle='no pude confirmar que la orden pendiente se canceló: no entro a mercado (reintento en el siguiente ciclo)')
-                    ya_dentro = True
+            if not ya_dentro and not plano(sym, 'orb'):
+                log('aviso', NOMBRE['orb'], detalle='no pude confirmar que no hay órdenes ni posiciones del rango: no entro a mercado (reintento en el siguiente ciclo)')
+                ya_dentro = True
             if not ya_dentro:
                 abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
                       f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f}) sin orden pendiente: entra a mercado')
@@ -706,6 +722,8 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
         if lado_r != 0:
             cerrar(sym, 'ruido', 'salió de la zona · ' + info)
         if pos_m != 0:
+            if mt5.positions_get(symbol=sym) is None:
+                return
             t_r = mt5.symbol_info_tick(sym)
             if t_r is None or t_r.bid <= 0 or t_r.ask <= 0:
                 log('error', NOMBRE['ruido'], detalle=f'sin tick para abrir zona de ruido ({mt5.last_error()})')
@@ -1202,7 +1220,7 @@ def main():
         ahora = ahora_ny()
         if ahora.time() >= cierre:
             ok = conectado() and cerrar_todo(sym, f'cierre del día ({cierre:%H:%M} NY)', intentos=5)
-            if not ok and ahora.time() < hasta:
+            if not ok and ahora_ny().time() < hasta:
                 time.sleep(2); continue                    # sigue intentando (y reconectando) hasta el fin del tramo
             if not ok:
                 log('error', detalle='NO PUDE CERRAR TODO al final del día: revisar MT5 a mano (quedan posiciones u órdenes)')

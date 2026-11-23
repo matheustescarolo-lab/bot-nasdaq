@@ -515,6 +515,64 @@ class TestBotLogica(unittest.TestCase):
         bot_nasdaq.pais_ip = lambda: 'MX'
         bot_nasdaq.guardia_ip()
 
+    # ===== AUDIT_007 =====
+    def test_pendiente_se_cancela_con_perdida_flotante_o_colchon_proyectado(self):
+        self._con_tope(); self._ftmo(piso=95000.0)
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=27000.0, ask=27000.5))
+        ruido = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=0, ticket=2, volume=24.0, price_open=27100.0, sl=26830.0, tp=0.0, time=0)
+        orden = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=bot_nasdaq.mt5.ORDER_TYPE_BUY_STOP, ticket=6, volume_current=24.0,
+                                      price_open=27150.0, sl=26900.0, tp=0.0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[ruido])
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[orden])
+        # ruido −$3,800 flotante: balance 100,000, equity 96,200; con 48 lotes el colchón es $1,440 → no hay margen para llenar la pendiente
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=96200.0, balance=100000.0))
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        bot_nasdaq.asegurar_tope('USTEC')
+        self.assertIn(bot_nasdaq.mt5.TRADE_ACTION_REMOVE, [r['action'] for r in enviadas])
+        self.assertEqual([r.get('order') for r in enviadas if r['action'] == bot_nasdaq.mt5.TRADE_ACTION_REMOVE], [6])
+
+    def test_pendiente_se_cancela_si_el_stop_no_cabe(self):
+        self._con_tope(); self._ftmo(piso=95000.0)
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info(trade_stops_level=10000))     # 100 pts mínimo
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=27000.0, ask=27000.5))
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=96600.0, balance=96600.0))  # margen $1,200 → 50 pts con 24 lotes
+        orden = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=bot_nasdaq.mt5.ORDER_TYPE_SELL_STOP, ticket=8, volume_current=24.0,
+                                      price_open=26900.0, sl=27300.0, tp=0.0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[])
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[orden])
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        bot_nasdaq.asegurar_tope('USTEC')
+        self.assertEqual([r['action'] for r in enviadas], [bot_nasdaq.mt5.TRADE_ACTION_REMOVE])
+
+    def test_sincronizar_no_hace_nada_si_mt5_no_responde(self):
+        bot_nasdaq.DESFASE = 7 * 3600
+        bot_nasdaq.CONTEXTO = {}
+        idx = pd.date_range('2026-11-20 09:30', periods=7, freq='5min')
+        df = pd.DataFrame({'o': [105]*7, 'h': [110]*6 + [111], 'l': [100]*6 + [104], 'c': [105]*6 + [110.5], 'v': [100]*7}, index=idx)
+        prev = pd.DataFrame({'o': [105]*78, 'h': [110]*78, 'l': [100]*78, 'c': [105]*78, 'v': [100]*78},
+                            index=pd.date_range('2026-11-19 09:30', periods=78, freq='5min'))
+        full_df = pd.concat([prev, df])
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
+        hechos = []
+        orig = (bot_nasdaq.abrir, bot_nasdaq.poner_pendiente)
+        bot_nasdaq.abrir = lambda *a, **k: hechos.append('abrir')
+        bot_nasdaq.poner_pendiente = lambda *a, **k: hechos.append('pendiente')
+        try:
+            for pg, og in ((None, []), ([], None)):
+                bot_nasdaq.mt5.positions_get = MagicMock(return_value=pg)
+                bot_nasdaq.mt5.orders_get = MagicMock(return_value=og)
+                bot_nasdaq.sincronizar('USTEC', full_df, dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 10, 6), {'orb': 2.0, 'ruido': 2.0})
+            # con MT5 respondiendo vacío sí entra (control)
+            bot_nasdaq.mt5.positions_get = MagicMock(return_value=())
+            bot_nasdaq.mt5.orders_get = MagicMock(return_value=())
+            bot_nasdaq.sincronizar('USTEC', full_df, dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 10, 6), {'orb': 2.0, 'ruido': 2.0})
+        finally:
+            bot_nasdaq.abrir, bot_nasdaq.poner_pendiente = orig
+        self.assertEqual(hechos, ['abrir'])
+
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba
         p = ROOT / 'estado_nasdaq_ftmo.json'
