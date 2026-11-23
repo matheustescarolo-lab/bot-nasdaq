@@ -712,6 +712,34 @@ class TestBotLogica(unittest.TestCase):
         rapida = c('completed', 'success', '2026-11-23T19:00:00Z', '2026-11-23T19:02:00Z')
         self.assertFalse(vigia.decidir(lun, [rapida], set(), set())[0])                                          # prueba o el bot decidió no operar
 
+    def test_cero_mnq_no_abre_pero_administra(self):
+        bot_nasdaq.DESFASE = 7 * 3600
+        bot_nasdaq.CONTEXTO = {}
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=bot_nasdaq.mt5.POSITION_TYPE_BUY, ticket=5, volume=2.0,
+                                    price_open=100.0, sl=99.0, tp=0.0, time=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[])
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
+        orig = (bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb)
+        hechos = []
+        bot_nasdaq.modelo_ruido = lambda *a, **k: (0, 'volvió a la zona', dt.datetime(2026, 11, 20, 13, 0))
+        bot_nasdaq.cerrar = lambda *a, **k: hechos.append(('cerrar', a[1])) or True
+        bot_nasdaq.abrir = lambda *a, **k: hechos.append(('abrir', a[1]))
+        bot_nasdaq.niveles_orb = lambda *a, **k: None
+        idx = pd.date_range('2026-11-20 09:30', periods=43, freq='5min')
+        df = pd.DataFrame({'o': [100]*43, 'h': [101]*43, 'l': [99]*43, 'c': [100]*43, 'v': [100]*43}, index=idx)
+        prev = pd.DataFrame({'o': [100]*78, 'h': [101]*78, 'l': [99]*78, 'c': [100]*78, 'v': [100]*78},
+                            index=pd.date_range('2026-11-19 09:30', periods=78, freq='5min'))
+        try:
+            bot_nasdaq.sincronizar('USTEC', pd.concat([prev, df]), dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 13, 1), {'orb': 0, 'ruido': 0})
+            self.assertEqual(hechos, [('cerrar', 'ruido')])          # con 0 MNQ sigue cerrando lo abierto
+            hechos.clear(); bot_nasdaq.mt5.positions_get = MagicMock(return_value=[])
+            bot_nasdaq.modelo_ruido = lambda *a, **k: (1, 'arriba de la zona', dt.datetime(2026, 11, 20, 13, 0))
+            bot_nasdaq.sincronizar('USTEC', pd.concat([prev, df]), dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 13, 1), {'orb': 0, 'ruido': 0})
+            self.assertEqual(hechos, [])                             # pero no abre
+        finally:
+            bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb = orig
+
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba
         p = ROOT / 'estado_nasdaq_ftmo.json'

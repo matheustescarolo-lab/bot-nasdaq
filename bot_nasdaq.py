@@ -811,8 +811,9 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
     if len(hoy_df) == 0 or hoy_df.index[0].time() > T('09:35'):
         return
     r1 = caida_ayer(previos)
-    sin_orb = (r1 is not None and r1 < CAIDA_ORB) or not lotes.get('orb')
-    sin_ruido = (r1 is not None and r1 < CAIDA_RUIDO) or not lotes.get('ruido')
+    sin_orb = r1 is not None and r1 < CAIDA_ORB
+    sin_ruido = r1 is not None and r1 < CAIDA_RUIDO
+    # 0 MNQ (las capas de tamaño dan menos de 0.5): esa estrategia no ABRE hoy, pero sigue administrando lo que ya esté abierto
     # --- Rango de 30 min ---
     niv = niveles_orb(hoy_df)
     if niv and ahora.time() >= T('10:00') and str(hoy) not in FOMC and not CONTEXTO.get('marcas', {}).get('decision_fed') and not sin_orb:
@@ -836,7 +837,7 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
         elif est == 'esperando':
             tiene_buy = any(o.type == mt5.ORDER_TYPE_BUY_STOP for o in pend)
             tiene_sell = any(o.type == mt5.ORDER_TYPE_SELL_STOP for o in pend)
-            if not (tiene_buy and tiene_sell):
+            if not (tiene_buy and tiene_sell) and lotes['orb'] > 0:
                 info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
                 if info is not None and t is not None:
                     pt = info.point or 0.01
@@ -854,7 +855,7 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
             if not ya_dentro and not plano(sym, 'orb'):
                 log('aviso', NOMBRE['orb'], detalle='no pude confirmar que no hay órdenes ni posiciones del rango: no entro a mercado (reintento en el siguiente ciclo)')
                 ya_dentro = True
-            if not ya_dentro:
+            if not ya_dentro and lotes['orb'] > 0:
                 t_o = mt5.symbol_info_tick(sym)
                 nivel = hi if lado_m > 0 else lo
                 px_o = (t_o.ask if lado_m > 0 else t_o.bid) if t_o is not None else None
@@ -875,7 +876,7 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
     if pos_m != lado_r:
         if lado_r != 0 and not cerrar(sym, 'ruido', 'salió de la zona · ' + info):
             return                                   # no se confirmó el cierre: no abre el lado contrario (evita quedar cubierto o duplicado)
-        if pos_m != 0:
+        if pos_m != 0 and lotes['ruido'] > 0:
             if not plano(sym, 'ruido'):
                 return
             t_r = mt5.symbol_info_tick(sym)
