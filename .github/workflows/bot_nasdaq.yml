@@ -1,4 +1,5 @@
 name: Bot Nasdaq (demo)
+run-name: ${{ inputs.origen == 'vigia' && 'Bot Nasdaq (relanzado por el vigia)' || 'Bot Nasdaq (demo)' }}
 
 # Lo lanza cron-job.org dos veces por día de bolsa (hora de Nueva York): 9:45 (tramo de la mañana) y 12:40 (tramo de la tarde).
 # El bot decide solo qué tramo le toca según la hora. Si los dos coinciden, el de la tarde espera a que termine el de la mañana.
@@ -9,6 +10,10 @@ on:
         description: 'Solo probar la conexion, sin operar'
         type: boolean
         default: false
+      origen:
+        description: 'Quien lo lanza (vigia = relanzamiento automatico)'
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -42,7 +47,13 @@ jobs:
           git add contexto
           git diff --cached --quiet && exit 0
           git commit -m "Contexto diario $(date -u +%Y-%m-%d)"
-          for i in 1 2 3 4 5; do git pull -q --rebase && git push && break; sleep $((RANDOM % 10 + 3)); done
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull -q --rebase && git push; then ok=1; break; fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 3))
+          done
+          if [ "$ok" != 1 ]; then echo "::error::No pude guardar el contexto en el repositorio (5 intentos)"; exit 1; fi
 
   operar:
     # Dos cuentas a la vez con la misma llamada de cron-job.org: Tickmill (demo, 3 versiones de Lucid) y FTMO (reto 2-Step)
@@ -181,4 +192,10 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Bitacora y estado Nasdaq ($BOT_CUENTA) $(date -u +%Y-%m-%d)"
           git checkout -q -- .   # descarta cambios ya guardados en otro lado (p. ej. contexto/, que sube el trabajo de Linux): si no, el pull falla
-          for i in 1 2 3 4 5; do git pull -q --rebase -X theirs && git push && break; sleep $((RANDOM % 20 + 5)); done   # en conflicto gana el estado del bot
+          ok=0
+          for i in 1 2 3 4 5; do   # en conflicto gana el estado del bot (también contra lo que subió en vivo durante el día)
+            if git pull -q --rebase -X theirs && git push; then ok=1; break; fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 20 + 5))
+          done
+          if [ "$ok" != 1 ]; then echo "::error::No pude guardar la bitacora y el estado en el repositorio (5 intentos)"; exit 1; fi

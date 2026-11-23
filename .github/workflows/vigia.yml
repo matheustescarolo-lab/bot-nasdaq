@@ -1,0 +1,32 @@
+name: Vigía del bot Nasdaq
+
+# Si el bot no está corriendo en horario de bolsa (el runner de GitHub se cayó, cron-job.org no disparó, el tramo falló),
+# lo vuelve a lanzar. Solo lanza si NO hay ninguna corrida activa o en espera: nunca cancela ni duplica un tramo.
+on:
+  workflow_run:
+    workflows: ["Bot Nasdaq (demo)"]
+    types: [completed]
+  schedule:
+    - cron: '*/15 13-21 * * 1-5'     # cada 15 min, 13:00–21:59 UTC (cubre 9:30–16:00 NY con y sin horario de verano)
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: vigia-bot-nasdaq
+  cancel-in-progress: false
+
+jobs:
+  vigia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: ¿El bot debería estar corriendo y no corre?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 vigia.py
