@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-23",
- "generado_ny": "2026-11-23 09:45",
+ "generado_ny": "2026-11-23 12:51",
  "errores": {},
  "calendario": [
   {
@@ -21,16 +21,28 @@
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Nvidia skyrockets 30% on Huang’s return as CEO, recovering nearly all the losses since he disclosed affair",
+  "Trump tells CNBC ‘I made the deal’ to reinstate Nvidia’s Jensen Huang",
+  "Jensen Huang reinstated as Nvidia CEO. Stock skyrockets 33%",
+  "‘This establishes a bottom’: Jensen Huang’s return seen as likely to stop market sell-off, for now",
+  "Tech stocks rally after Nvidia board approves Jensen Huang's return as CEO",
   "SpaceX sued by Oregon and Virginia over AI deepfake porn, Grok safety claims",
   "CrowdStrike to buy Zscaler in $44 billion deal as AI supercharges cyberattacks ",
   "Tokenized stocks face pushback as NYSE, Nasdaq pivot for a new market ",
-  "Zelenskyy praises ‘exemplary’ drone operation that sank Russian warship in a Libyan port",
-  "Trump hosts crypto gala as his meme coin falls below $1",
-  "Wall Street's 'Fear Gauge' just flashed a buy sign",
-  "‘Worst COP ever’: Climate talks collapse after draft deal fails to include fossil fuels"
+  "More Americans pay this Obama-era investment tax every year — how to avoid it"
  ],
  "trump": [
+  {
+   "hora": "Mon, 23 Nov 2026 16:32:47 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43716",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Mon, 23 Nov 2026 14:50:52 +0000",
+   "texto": "Congratulations to NVIDIA on having made, what I consider to be, an absolutely GREAT decision! President DONALD J. TRUMP",
+   "enlace": "https://www.trumpstruth.org/statuses/43715",
+   "habla_de_mercado": true
+  },
   {
    "hora": "Mon, 23 Nov 2026 14:07:17 +0000",
    "texto": "The NVIDIA Board of Directors has made the correct and proper decision to return Jensen Huang to the position of CEO. The Country needs Jensen’s leadership at NVIDIA in order to ensure the Success and Prosperity of not only the Company, but the American Economy. The United States Government has no reason to believe that Jensen’s return to NVIDIA poses any risk to National Security. The Attorney Ge",
@@ -138,39 +150,27 @@
    "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117660724070925141    View image   Quoted  Donald J. Trump       View video",
    "enlace": "https://www.trumpstruth.org/statuses/43692",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 15:09:29 +0000",
-   "texto": "View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43693",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 15:09:17 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117660722020393630    View image   Quoted  Donald J. Trump       View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43694",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26664.75,
+  "precio": 26798.5,
   "cierre_anterior": 25126.5,
-  "cambio": 0.06122022565816976
+  "cambio": 0.06654329094780409
  },
  "sp_futuro": {
-  "precio": 7212.0,
+  "precio": 7252.75,
   "cierre_anterior": 6935.0,
-  "cambio": 0.03994232155731803
+  "cambio": 0.045818312905551606
  },
  "vix": {
-  "precio": 26.76,
+  "precio": 27.2,
   "cierre_anterior": 35.88999938964844,
-  "cambio": -0.25438839634758403
+  "cambio": -0.24212871377631862
  },
  "vix9d": {
-  "precio": 40.72,
+  "precio": 29.08,
   "cierre_anterior": 40.720001220703125,
-  "cambio": -2.997797365900112e-08
+  "cambio": -0.28585463830450586
  },
  "dealers": {
   "fecha": "2026-11-20",
@@ -194,12 +194,12 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.06122022565816976,
-  "vix": 26.76,
+  "gap_nasdaq_futuro": 0.06654329094780409,
+  "vix": 27.2,
   "vix9d_vix": 1.135,
   "dix_pct": 0.01,
   "gex_pct": 0.01,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 6
+  "trump_posts_de_mercado": 7
  }
 }
