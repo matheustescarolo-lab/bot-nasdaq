@@ -1,0 +1,55 @@
+name: Auditoría con Gemini (Neon)
+
+# Cada vez que Claude cambia auditoria/HANDOFF.md en una rama (o se lanza a mano), Gemini audita la rama contra main
+# y la auditoría queda en auditoria/AUDIT_NNN.md de esa rama. RECHAZADO = corrida en rojo.
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['auditoria/HANDOFF.md']
+  workflow_dispatch:
+    inputs:
+      rama:
+        description: 'Rama a auditar'
+        required: true
+        type: string
+      base:
+        description: 'Comparar contra este commit (vacío = contra main)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auditoria-${{ inputs.rama || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  auditar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.rama || github.ref_name }}
+          fetch-depth: 0
+      - name: Auditoría con Gemini
+        id: neon
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          RAMA: ${{ inputs.rama || github.ref_name }}
+          BASE: ${{ inputs.base }}
+        run: python3 auditoria/auditar.py
+      - name: Guardar la auditoría en la rama
+        if: steps.neon.outputs.archivo != ''
+        run: |
+          git config user.name "neon-auditor"
+          git config user.email "neon-auditor@users.noreply.github.com"
+          git add auditoria/AUDIT_*.md
+          git commit -m "Auditoría Gemini: ${{ steps.neon.outputs.veredicto }}"
+          for i in 1 2 3; do git pull -q --rebase && git push && break; sleep 5; done
+      - name: Veredicto
+        run: |
+          echo "Veredicto: ${{ steps.neon.outputs.veredicto }}"
+          if [ "${{ steps.neon.outputs.veredicto }}" != "APROBADO" ] && [ "${{ steps.neon.outputs.veredicto }}" != "APROBADO CON CAMBIOS" ]; then exit 1; fi
