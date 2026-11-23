@@ -109,6 +109,7 @@ class TestBotLogica(unittest.TestCase):
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self._orig_estado = bot_nasdaq.ESTADO
         self._orig_bit = bot_nasdaq.BITACORA
+        bot_nasdaq._AVISO_MARGEN.clear()
         bot_nasdaq.ESTADO = str(self.tmp_dir / 'estado_test.json')
         bot_nasdaq.BITACORA = str(self.tmp_dir / 'bitacora_test.csv')
         for p in (bot_nasdaq.ESTADO, bot_nasdaq.BITACORA):
@@ -186,19 +187,21 @@ class TestBotLogica(unittest.TestCase):
         llamadas = {'n': 0}
         def posiciones(**kw):
             llamadas['n'] += 1
-            return [] if llamadas['n'] == 1 else [pos]       # vacío al principio; lleno después de cancelar
+            return [] if llamadas['n'] <= 2 else [pos]       # vacío al principio (guardia de MT5 y posicion); lleno después de cancelar
         bot_nasdaq.mt5.positions_get = MagicMock(side_effect=posiciones)
         bot_nasdaq.mt5.orders_get = MagicMock(return_value=[buy_order])
         bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
         abiertas = []
         orig = (bot_nasdaq.cancelar_pendientes, bot_nasdaq.abrir)
-        bot_nasdaq.cancelar_pendientes = lambda *a, **k: None
+        canceladas = []
+        bot_nasdaq.cancelar_pendientes = lambda *a, **k: canceladas.append(a[2] if len(a) > 2 else '')
         bot_nasdaq.abrir = lambda *a, **k: abiertas.append(a)
         try:
             bot_nasdaq.sincronizar('USTEC', full_df, dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 10, 6), {'orb': 2.0, 'ruido': 2.0})
         finally:
             bot_nasdaq.cancelar_pendientes, bot_nasdaq.abrir = orig
         self.assertEqual(abiertas, [])
+        self.assertTrue(canceladas and "entra a mercado" in canceladas[0])   # sí pasó por la rama «activo»
 
     def test_ftmo_listo_revierte_si_baja_de_meta(self):
         bot_nasdaq.FTMO_INICIAL = 100000.0
@@ -572,6 +575,30 @@ class TestBotLogica(unittest.TestCase):
         finally:
             bot_nasdaq.abrir, bot_nasdaq.poner_pendiente = orig
         self.assertEqual(hechos, ['abrir'])
+
+    def test_ruido_no_gira_si_no_pudo_cerrar(self):
+        bot_nasdaq.DESFASE = 7 * 3600
+        bot_nasdaq.CONTEXTO = {}
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=bot_nasdaq.mt5.POSITION_TYPE_BUY, ticket=5, volume=2.0,
+                                    price_open=100.0, sl=99.0, tp=0.0, time=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[])
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
+        orig = (bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb)
+        abiertas = []
+        bot_nasdaq.modelo_ruido = lambda *a, **k: (-1, 'gira a venta', dt.datetime(2026, 11, 20, 11, 0))
+        bot_nasdaq.cerrar = lambda *a, **k: False                     # el cierre falla (requote)
+        bot_nasdaq.abrir = lambda *a, **k: abiertas.append(a)
+        bot_nasdaq.niveles_orb = lambda *a, **k: None
+        idx = pd.date_range('2026-11-20 09:30', periods=19, freq='5min')
+        df = pd.DataFrame({'o': [100]*19, 'h': [101]*19, 'l': [99]*19, 'c': [100]*19, 'v': [100]*19}, index=idx)
+        prev = pd.DataFrame({'o': [100]*78, 'h': [101]*78, 'l': [99]*78, 'c': [100]*78, 'v': [100]*78},
+                            index=pd.date_range('2026-11-19 09:30', periods=78, freq='5min'))
+        try:
+            bot_nasdaq.sincronizar('USTEC', pd.concat([prev, df]), dt.date(2026, 11, 20), dt.datetime(2026, 11, 20, 11, 1), {'orb': 2.0, 'ruido': 2.0})
+        finally:
+            bot_nasdaq.modelo_ruido, bot_nasdaq.cerrar, bot_nasdaq.abrir, bot_nasdaq.niveles_orb = orig
+        self.assertEqual(abiertas, [])
 
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba

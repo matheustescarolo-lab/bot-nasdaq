@@ -454,7 +454,10 @@ def asegurar_tope(sym):
                 r = mt5.order_send(dict(action=mt5.TRADE_ACTION_REMOVE, order=o.ticket))
                 if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
                     log('cancela', NOMBRE[clave], 'compra' if lado > 0 else 'venta', o.volume_current, f'{o.price_open:.2f}',
-                        f'orden pendiente cancelada: sin margen antes del límite FTMO (margen al llenarse ${(m_o if m_o is not None else usd_o):,.0f}) · orden {o.ticket}')
+                        ('orden pendiente cancelada: su stop de seguridad quedaría pegado al precio (distancia mínima del bróker)' if sin_espacio and not
+                         ((m_o is not None and m_o < TOPE_MIN_USD) or usd_o < TOPE_MIN_USD) else
+                         f'orden pendiente cancelada: sin margen antes del límite FTMO (margen al llenarse ${(m_o if m_o is not None else usd_o):,.0f})')
+                        + f' · orden {o.ticket}')
                 else:
                     log('error', NOMBRE[clave], detalle=f"no pude cancelar la pendiente {o.ticket} sin margen: {r.retcode if r else mt5.last_error()}")
                 continue
@@ -466,7 +469,7 @@ def asegurar_tope(sym):
                                     expiration=getattr(o, 'time_expiration', 0) or 0))
             if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
                 log('protege', NOMBRE[clave], 'compra' if lado > 0 else 'venta', o.volume_current, f'{nuevo:.2f}',
-                    f'stop de seguridad en la orden pendiente ({txt}) · stop de {o.sl:.2f} a {nuevo:.2f} · orden {o.ticket}')
+                    f'stop de seguridad en la orden pendiente (máx ${usd_o:,.0f} desde su precio) · stop de {o.sl:.2f} a {nuevo:.2f} · orden {o.ticket}')
             else:
                 log('error', NOMBRE[clave], detalle=f"no pude acercar el stop de la pendiente {o.ticket}: {r.retcode if r else mt5.last_error()}")
 
@@ -545,7 +548,7 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     precio = alinear(info, precio, lado > 0)              # compra arriba / venta abajo del rango, en la rejilla de ticks
     sl_t, topado = tope_stop(sym, lado, lotes, precio, sl)
     if sl_t is None:
-        log_cada(('sin_margen', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
+        log_cada(('sin_margen_pend', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
     if topado:
         motivo += f' · stop de seguridad a ${abs(precio - sl_t) * lotes * _usd_punto_lote(info):,.0f}'
     sl = alinear(info, sl_t, lado > 0)                    # hacia el precio
@@ -636,7 +639,7 @@ def abrir(sym, clave, lado, lotes, sl, motivo):
         return
     sl_t, topado = tope_stop(sym, lado, lotes, px_ref, sl)
     if sl_t is None:
-        log_cada(('sin_margen', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
+        log_cada(('sin_margen_abrir', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
     if topado:
         motivo += ' · stop de seguridad'
     sl = sl_t
@@ -719,10 +722,10 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
     if lado_r == 0 and pos_m != 0 and salio_por_stop('ruido', ultimo):
         return                                   # el stop de emergencia la sacó: espera al siguiente chequeo
     if pos_m != lado_r:
-        if lado_r != 0:
-            cerrar(sym, 'ruido', 'salió de la zona · ' + info)
+        if lado_r != 0 and not cerrar(sym, 'ruido', 'salió de la zona · ' + info):
+            return                                   # no se confirmó el cierre: no abre el lado contrario (evita quedar cubierto o duplicado)
         if pos_m != 0:
-            if mt5.positions_get(symbol=sym) is None:
+            if not plano(sym, 'ruido'):
                 return
             t_r = mt5.symbol_info_tick(sym)
             if t_r is None or t_r.bid <= 0 or t_r.ask <= 0:
