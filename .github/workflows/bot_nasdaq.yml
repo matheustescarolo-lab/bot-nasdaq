@@ -180,4 +180,5 @@ jobs:
           done
           git diff --cached --quiet && exit 0
           git commit -m "Bitacora y estado Nasdaq ($BOT_CUENTA) $(date -u +%Y-%m-%d)"
+          git checkout -q -- .   # descarta cambios ya guardados en otro lado (p. ej. contexto/, que sube el trabajo de Linux): si no, el pull falla
           for i in 1 2 3 4 5; do git pull -q --rebase -X theirs && git push && break; sleep $((RANDOM % 20 + 5)); done   # en conflicto gana el estado del bot
