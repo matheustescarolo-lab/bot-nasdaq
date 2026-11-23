@@ -199,6 +199,66 @@ class TestBotLogica(unittest.TestCase):
             bot_nasdaq.cancelar_pendientes, bot_nasdaq.abrir = orig
         self.assertEqual(abiertas, [])
 
+    def test_ftmo_listo_revierte_si_baja_de_meta(self):
+        bot_nasdaq.FTMO_INICIAL = 100000.0
+        orig_etapa = bot_nasdaq.ETAPA
+        bot_nasdaq.ETAPA = 'fase1'
+        try:
+            bot_nasdaq.guardar_estado({'ftmo': {'fase': 1, 'inicio': '2026-11-19', 'base': 100000.0, 'cierre_prev': 100000.0,
+                                                'dias': 1, 'listo': False, 'login': 999, 'etapa': 'fase1'}})
+            bot_nasdaq.ftmo_cierre(110050.0, dt.date(2026, 11, 23), opero=True)
+            f = bot_nasdaq.leer_estado()['ftmo']
+            self.assertTrue(f['listo']); self.assertEqual(f['dias'], 2); self.assertFalse(f.get('aprobada'))
+            bot_nasdaq.ftmo_cierre(109650.0, dt.date(2026, 11, 24), opero=True)
+            f = bot_nasdaq.leer_estado()['ftmo']
+            self.assertFalse(f['listo']); self.assertEqual(f['dias'], 3)
+            bot_nasdaq.ftmo_cierre(109750.0, dt.date(2026, 11, 25), opero=True)
+            f = bot_nasdaq.leer_estado()['ftmo']
+            self.assertEqual(f['dias'], 4); self.assertFalse(f['listo']); self.assertFalse(f.get('aprobada'))
+            bot_nasdaq.ftmo_cierre(110050.0, dt.date(2026, 11, 27), opero=True)
+            f = bot_nasdaq.leer_estado()['ftmo']
+            self.assertTrue(f['listo']); self.assertEqual(f['dias'], 5); self.assertTrue(f.get('aprobada'))
+        finally:
+            bot_nasdaq.ETAPA = orig_etapa
+
+    def _margen(self, margin_free, m1, equity=100000.0, ordenes=(), posiciones=(), modo='lucid'):
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(margin_free=margin_free, equity=equity))
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=types.SimpleNamespace(
+            volume_step=0.01, volume_min=0.01, trade_tick_value=0.01, trade_tick_size=0.01))   # 1 lote = US$1 por punto
+        bot_nasdaq.mt5.order_calc_margin = MagicMock(return_value=m1)
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=list(ordenes))
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=list(posiciones))
+        self._modo = bot_nasdaq.MODO
+        bot_nasdaq.MODO = modo
+        self.addCleanup(setattr, bot_nasdaq, 'MODO', self._modo)
+
+    def test_lotes_por_margen_sobrado_no_recorta(self):
+        self._margen(100000, 1800)
+        self.assertEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 24.0, 27000.0, 'orb'), 24.0)
+
+    def test_lotes_por_margen_recorta_en_drawdown(self):
+        self._margen(47800, 1800)
+        self.assertAlmostEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 24.0, 27000.0, 'orb'), 22.57)
+
+    def test_lotes_por_margen_insuficiente_devuelve_cero(self):
+        self._margen(10, 1800)
+        self.assertEqual(bot_nasdaq.lotes_por_margen('USTEC', -1, 12.0, 27000.0, 'ruido'), 0.0)
+
+    def test_lotes_por_margen_emula_ftmo_swing_en_tickmill(self):
+        # Tickmill (1:100) sí tendría margen, pero FTMO Swing (1:15) sobre la cuenta virtual de 100K en −2,000 no:
+        # 27,000 × $1 / 15 = $1,800 por lote; (98,000 × 0.85) / 1,800 = 46.27 lotes
+        bot_nasdaq.guardar_estado({'ftmo': {'fase': 1, 'base': 48491.10}})
+        self._margen(40000, 270, equity=46491.10, modo='ftmo')
+        self.assertAlmostEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 48.0, 27000.0, 'ruido'), 46.27)
+        self.assertEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 24.0, 27000.0, 'ruido'), 24.0)
+
+    def test_lotes_por_margen_aparta_pendientes_de_la_otra_estrategia(self):
+        # Pendientes del rango (24 lotes por lado; solo una se llena) apartan 24 × 1,800 = 43,200 del margen de la zona de ruido
+        orb = [types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], volume_current=24.0) for _ in range(2)]
+        self._margen(100000, 1800, ordenes=orb)
+        self.assertAlmostEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 30.0, 27000.0, 'ruido'), 26.82)
+        self.assertEqual(bot_nasdaq.lotes_por_margen('USTEC', 1, 24.0, 27000.0, 'ruido'), 24.0)
+
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba
         p = ROOT / 'estado_nasdaq_ftmo.json'

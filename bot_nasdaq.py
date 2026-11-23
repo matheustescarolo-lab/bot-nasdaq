@@ -9,7 +9,7 @@ Solo opera en cuentas DEMO. Bitácora: bitacora_nasdaq.csv. Al final del día pu
 «📊 Update diario del bot Nasdaq» (GitHub te avisa por correo).
 Conexión: variables MT5_LOGIN, MT5_PASSWORD, MT5_SERVER y MT5_PATH.
 """
-import os, sys, csv, json, time, datetime as dt, urllib.request
+import os, sys, csv, json, math, time, datetime as dt, urllib.request
 from zoneinfo import ZoneInfo
 import pandas as pd
 import MetaTrader5 as mt5
@@ -26,6 +26,8 @@ BITACORA = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'bitacora_n
 FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital inicial de la cuenta FTMO
 ETAPA = os.environ.get('BOT_FTMO_ETAPA', 'reto')   # reto (fase 1 y 2 simuladas en la misma cuenta) | fase1 | fase2 | fondeada
 TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
+FTMO_APALANCAMIENTO = float(os.environ.get('BOT_FTMO_APALANCAMIENTO', '15'))   # FTMO Swing: 1:15 en índices (Standard 1:50)
+MARGEN_RESERVA = 0.85          # usa como máximo 85% del margen libre al abrir
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
@@ -247,6 +249,65 @@ def salio_por_stop(clave, desde_ny):
                and a_ny(d.time) >= desde_ny for d in ds)
 
 
+_AVISO_MARGEN = {}
+
+
+def _usd_punto_lote(info):
+    return info.trade_tick_value / info.trade_tick_size if info.trade_tick_size else 1.0
+
+
+def _lotes_por_margen(sym, lado, lotes, precio, clave, reserva=MARGEN_RESERVA):
+    """Recorta los lotes de una ENTRADA NUEVA si no cabe en el margen libre (nunca se usa al cerrar).
+    Revisa el margen real del bróker y, en modo FTMO, también el de FTMO Swing (1:15 sobre la cuenta virtual de 100K),
+    para que el ensayo en Tickmill recorte exactamente cuando lo haría FTMO. Aparta el margen que necesitarían las
+    órdenes pendientes de la otra estrategia (si se llenan después, no deben quedarse sin margen)."""
+    acc, info = mt5.account_info(), mt5.symbol_info(sym)
+    if acc is None or info is None or precio is None or precio <= 0 or lotes <= 0:
+        return lotes
+    upl = _usd_punto_lote(info)
+    otras = [o for o in (mt5.orders_get(symbol=sym) or []) if o.magic in MAGIC.values() and o.magic != MAGIC[clave]]
+    lotes_apartados = sum(max([o.volume_current for o in otras if o.magic == m] or [0.0]) for m in set(o.magic for o in otras))
+    limites = []
+    calc = getattr(mt5, 'order_calc_margin', None)
+    if calc is not None:
+        try:
+            m1 = calc(mt5.ORDER_TYPE_BUY if lado > 0 else mt5.ORDER_TYPE_SELL, sym, 1.0, float(precio))
+        except Exception:
+            m1 = None
+        if m1 and m1 > 0:
+            limites.append((float(acc.margin_free) - lotes_apartados * m1, m1, 'bróker'))
+    if MODO == 'ftmo':
+        m1 = precio * upl / FTMO_APALANCAMIENTO
+        f = (leer_estado().get('ftmo') or {})
+        eq_v = FTMO_INICIAL + acc.equity - f.get('base', acc.equity) if CUENTA != 'ftmo' else acc.equity
+        usado = sum(p.volume * (p.price_current or p.price_open) * upl / FTMO_APALANCAMIENTO
+                    for p in (mt5.positions_get(symbol=sym) or []) if p.magic in MAGIC.values())
+        limites.append((eq_v - usado - lotes_apartados * m1, m1, f'FTMO 1:{FTMO_APALANCAMIENTO:g}'))
+    if not limites:
+        return lotes
+    paso = info.volume_step or 0.01
+    maximo, libre, quien = min((math.floor(max(0.0, li * reserva) / m1 / paso + 1e-9) * paso, li, q) for li, m1, q in limites)
+    maximo = round(maximo, 8)
+    if lotes <= maximo:
+        return lotes
+    if maximo < (info.volume_min or paso):
+        ahora_m = time.time()
+        if ahora_m - _AVISO_MARGEN.get(clave, 0) >= 300:
+            _AVISO_MARGEN[clave] = ahora_m
+            log('aviso', NOMBRE[clave], detalle=f'margen libre insuficiente ({quien}: ${libre:,.0f}): no abro {lotes:g} lotes')
+        return 0.0
+    log('tamaño', NOMBRE[clave], detalle=f'recorte por margen libre ({quien}: ${libre:,.0f}): {lotes:g} → {maximo:g} lotes')
+    return maximo
+
+
+def lotes_por_margen(sym, lado, lotes, precio, clave, reserva=MARGEN_RESERVA):
+    try:
+        return _lotes_por_margen(sym, lado, lotes, precio, clave, reserva)
+    except Exception as ex:                       # un fallo al revisar el margen no debe tumbar la entrada: el bróker decide
+        log('aviso', NOMBRE[clave], detalle=f'no pude revisar el margen ({ex}): mando {lotes:g} lotes')
+        return lotes
+
+
 def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
     t, info = mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
     if t is None or info is None or t.bid <= 0:
@@ -293,6 +354,9 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     info = mt5.symbol_info(sym)
     if info is None:
         log('error', NOMBRE[clave], detalle=f'sin info del símbolo para orden pendiente ({mt5.last_error()})')
+        return False
+    lotes = lotes_por_margen(sym, lado, lotes, precio, clave)
+    if lotes <= 0:
         return False
     req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=round(precio, info.digits),
                sl=round(sl, info.digits), magic=MAGIC[clave], comment=clave,
@@ -343,6 +407,10 @@ def cerrar(sym, clave, motivo):
 
 
 def abrir(sym, clave, lado, lotes, sl, motivo):
+    t = mt5.symbol_info_tick(sym)
+    lotes = lotes_por_margen(sym, lado, lotes, (t.ask if lado > 0 else t.bid) if t is not None else 0.0, clave)
+    if lotes <= 0:
+        return
     px = enviar(sym, lado, lotes, clave, sl=sl)
     if px is not None:
         log('entrada', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{px:.2f}',
@@ -647,8 +715,7 @@ def ftmo_cierre(equity, hoy, opero=None):
     if ETAPA == 'fondeada':
         L.append(f"💼 Cuenta FTMO fondeada · día {f['dias']} · {gan:+,.0f} desde el inicio · pérdida máxima en {f['base'] - 0.10 * ini:,.0f}")
         guardar_estado(e); return L
-    if gan >= obj:
-        f['listo'] = True
+    f['listo'] = gan >= obj          # se recalcula cada día: si cae debajo de la meta antes de los 4 días, ya no está lista
     if f['listo'] and f['dias'] >= 4:
         e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='aprobada', dias=f['dias']))
         if ETAPA in ('fase1', 'fase2'):
