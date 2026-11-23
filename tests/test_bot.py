@@ -278,7 +278,7 @@ class TestBotLogica(unittest.TestCase):
 
     def test_pendiente_sale_con_stop_de_seguridad(self):
         bot_nasdaq.mt5.symbol_info = MagicMock(return_value=types.SimpleNamespace(
-            trade_tick_value=0.01, trade_tick_size=0.01, digits=2, point=0.01, volume_step=0.01, volume_min=0.01))
+            trade_tick_value=0.01, trade_tick_size=0.01, digits=2, point=0.01, volume_step=0.01, volume_min=0.01, trade_stops_level=0))
         bot_nasdaq.mt5.account_info = MagicMock(return_value=None)       # sin datos de margen: no recorta
         enviadas = []
         bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
@@ -289,6 +289,129 @@ class TestBotLogica(unittest.TestCase):
         finally:
             bot_nasdaq.TOPE_POSICION_USD = orig
         self.assertEqual(enviadas[0]['sl'], 27374.99)
+
+    # ===== AUDIT_005 =====
+    def _info(self, **kw):
+        base = dict(trade_tick_value=0.01, trade_tick_size=0.01, digits=2, point=0.01, volume_step=0.01, volume_min=0.01,
+                    trade_stops_level=0)
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    def _con_tope(self, usd=4500.0):
+        orig = bot_nasdaq.TOPE_POSICION_USD
+        bot_nasdaq.TOPE_POSICION_USD = usd
+        self.addCleanup(setattr, bot_nasdaq, 'TOPE_POSICION_USD', orig)
+
+    def test_enviar_no_abre_sin_stop_valido(self):
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info(trade_stops_level=100))   # 1 punto mínimo
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=100.0, ask=100.5))
+        bot_nasdaq.mt5.order_send = MagicMock(return_value=types.SimpleNamespace(retcode=10009, price=100.5))
+        self.assertIsNone(bot_nasdaq.enviar('USTEC', 1, 2.0, 'ruido', sl=None))
+        self.assertIsNone(bot_nasdaq.enviar('USTEC', 1, 2.0, 'ruido', sl=99.5))     # a 0.5 del bid: menos que el mínimo
+        self.assertIsNone(bot_nasdaq.enviar('USTEC', -1, 2.0, 'ruido', sl=101.0))   # a 0.5 del ask
+        bot_nasdaq.mt5.order_send.assert_not_called()
+        self.assertEqual(bot_nasdaq.enviar('USTEC', 1, 2.0, 'ruido', sl=98.0), 100.5)
+        self.assertEqual(bot_nasdaq.mt5.order_send.call_args[0][0]['sl'], 98.0)
+
+    def test_abrir_sin_tick_no_envia(self):
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=None)
+        bot_nasdaq.mt5.last_error = MagicMock(return_value=(0, ''))
+        bot_nasdaq.mt5.order_send = MagicMock()
+        bot_nasdaq.abrir('USTEC', 'ruido', 1, 2.0, 99.0, 'prueba')
+        bot_nasdaq.mt5.order_send.assert_not_called()
+
+    def test_tope_stop_alinea_al_tick_y_no_arriesga_de_mas(self):
+        self._con_tope()
+        # tick de 0.25 que vale $0.25 por lote (=$1/punto/lote); 7 lotes → $4,500 = 642.857 pts
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info(trade_tick_value=0.25, trade_tick_size=0.25))
+        sl, top = bot_nasdaq.tope_stop('USTEC', 1, 7.0, 27000.0, 26000.0)
+        self.assertTrue(top); self.assertEqual(sl % 0.25, 0); self.assertLessEqual((27000.0 - sl) * 7, 4500)
+        sl, top = bot_nasdaq.tope_stop('USTEC', -1, 7.0, 27000.0, 28000.0)
+        self.assertTrue(top); self.assertEqual(sl % 0.25, 0); self.assertLessEqual((sl - 27000.0) * 7, 4500)
+
+    def test_tope_stop_datos_invalidos_deja_el_stop(self):
+        self._con_tope()
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info(trade_tick_value=0.0))
+        self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26400.0), (26400.0, False))
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        self.assertEqual(bot_nasdaq.tope_stop('USTEC', 0, 12.0, 27000.0, 26400.0), (26400.0, False))
+        self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, None), (None, False))
+        self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 0, 27000.0, 26400.0), (26400.0, False))
+
+    def test_tope_stop_usa_el_margen_que_queda_antes_del_freno(self):
+        self._con_tope()
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        modo = bot_nasdaq.MODO; bot_nasdaq.MODO = 'ftmo'; self.addCleanup(setattr, bot_nasdaq, 'MODO', modo)
+        bot_nasdaq.guardar_estado({'dia': {'piso': 95000.0}})            # freno en 95,400
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=97400.0, balance=97400.0, margin_free=1e6))
+        sl, top = bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26000.0)   # margen $2,000 → 166.67 pts
+        self.assertTrue(top); self.assertAlmostEqual(sl, 26833.34, places=2)
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=95700.0, balance=95700.0, margin_free=1e6))
+        self.assertEqual(bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26000.0), (None, True))   # $300 < mínimo: no abre
+
+    def test_asegurar_tope_corrige_el_deslizamiento(self):
+        self._con_tope()
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=26990.0, ask=26990.5))
+        # pidió 27,000 con stop 26,625 ($4,500), pero se llenó a 27,040: el stop real arriesga $4,980
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=bot_nasdaq.mt5.POSITION_TYPE_BUY, ticket=7, volume=12.0,
+                                    price_open=27040.0, sl=26625.0, tp=0.0, time=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        bot_nasdaq.asegurar_tope('USTEC')
+        self.assertEqual(len(enviadas), 1)
+        self.assertEqual(enviadas[0]['action'], bot_nasdaq.mt5.TRADE_ACTION_SLTP)
+        self.assertEqual(enviadas[0]['sl'], 26665.0)
+        enviadas.clear(); pos.sl = 26665.0
+        bot_nasdaq.asegurar_tope('USTEC')
+        self.assertEqual(enviadas, [])                                   # ya cumple: no gasta solicitudes
+
+    def test_cerrar_todo_no_confirma_si_queda_abierta(self):
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=bot_nasdaq.mt5.POSITION_TYPE_BUY, ticket=9, volume=2.0,
+                                    price_open=100.0, sl=99.0, tp=0.0, time=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[])
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=100.0, ask=100.5))
+        bot_nasdaq.mt5.order_send = MagicMock(return_value=types.SimpleNamespace(retcode=10004, comment='requote'))
+        self.assertFalse(bot_nasdaq.cerrar_todo('USTEC', 'prueba'))
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[])
+        self.assertTrue(bot_nasdaq.cerrar_todo('USTEC', 'prueba'))
+
+    def test_colchon_del_freno_crece_con_el_tamano(self):
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=0, ticket=1, volume=24.0, price_open=1, sl=0, tp=0, time=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        self.assertEqual(bot_nasdaq.colchon_freno('USTEC'), 30 * 24)       # 24 lotes de $1/pt → $720 (> $400)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[])
+        self.assertEqual(bot_nasdaq.colchon_freno('USTEC'), bot_nasdaq.FTMO_FRENO * bot_nasdaq.FTMO_INICIAL)
+
+    def test_limite_diario_desde_el_balance_de_medianoche(self):
+        bot_nasdaq.FTMO_INICIAL = 100000.0
+        e = {'ftmo': {'fase': 1, 'base': 100000.0, 'listo': False}}
+        d = bot_nasdaq.ftmo_dia(e, 98000.0, dt.date(2026, 11, 23), ref=100000.0)   # flotante −2,000 al arrancar
+        self.assertEqual(d['piso'], 95000.0)
+
+    def test_balance_medianoche_resta_lo_realizado_hoy(self):
+        bot_nasdaq.DESFASE = 7 * 3600
+        ahora_srv = (dt.datetime.now(bot_nasdaq.NY).replace(tzinfo=None) - dt.datetime(1970, 1, 1)).total_seconds() + 7 * 3600
+        hoy = types.SimpleNamespace(time=ahora_srv - 60, type=0, profit=-1500.0, commission=-10.0, swap=0.0, fee=0.0)
+        viejo = types.SimpleNamespace(time=ahora_srv - 3 * 86400, type=0, profit=800.0, commission=0.0, swap=0.0, fee=0.0)
+        retiro = types.SimpleNamespace(time=ahora_srv - 60, type=2, profit=-5000.0, commission=0.0, swap=0.0, fee=0.0)
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[hoy, viejo, retiro])
+        acc = types.SimpleNamespace(balance=98490.0, equity=98490.0)
+        self.assertAlmostEqual(bot_nasdaq.balance_medianoche(acc), 100000.0)
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=None)
+        self.assertEqual(bot_nasdaq.balance_medianoche(types.SimpleNamespace(balance=100000.0, equity=99000.0)), 99000.0)
+
+    def test_fondeada_agotada_deja_de_operar(self):
+        bot_nasdaq.FTMO_INICIAL = 100000.0
+        orig = bot_nasdaq.ETAPA; bot_nasdaq.ETAPA = 'fondeada'; self.addCleanup(setattr, bot_nasdaq, 'ETAPA', orig)
+        bot_nasdaq.guardar_estado({'ftmo': {'fase': 1, 'inicio': '2026-11-01', 'base': 100000.0, 'cierre_prev': 91000.0, 'dias': 9,
+                                            'listo': False, 'login': 1, 'etapa': 'fondeada'}, 'dia': {}})
+        bot_nasdaq.ftmo_cierre(90500.0, dt.date(2026, 11, 23), opero=True)
+        self.assertEqual(bot_nasdaq.leer_estado()['ftmo'].get('aprobada'), 'agotado')
 
     def test_estado_ftmo_sin_datos_mock(self):
         # Valida que los archivos JSON de estado del repo no tengan login=1 de prueba

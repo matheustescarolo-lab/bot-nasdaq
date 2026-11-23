@@ -16,7 +16,8 @@ import MetaTrader5 as mt5
 from estrategias import niveles_orb, modelo_orb, modelo_ruido, piso_usd, LOOK, VELAS_DIA_MIN, T
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-NY, UTC = ZoneInfo('America/New_York'), dt.timezone.utc
+NY, UTC, PRAGA = ZoneInfo('America/New_York'), dt.timezone.utc, ZoneInfo('Europe/Prague')   # FTMO reinicia el día a medianoche de Praga
+TZ_SERVIDOR = ZoneInfo(os.environ['BOT_TZ_SERVIDOR']) if os.environ.get('BOT_TZ_SERVIDOR') else None   # opcional: zona del servidor MT5 si no va 7 h adelante de NY todo el año
 SIMBOLOS = ['USTEC', 'US100.cash', 'NAS100', 'US100', 'USTECH', 'NDX100']
 # Cuenta: 'tickmill' (demo, 3 versiones del examen de Lucid) o 'ftmo' (reto FTMO 2-Step real: metas 10% y 5%, pérdida diaria 5%, máxima 10% fija)
 CUENTA = os.environ.get('BOT_CUENTA', 'tickmill').lower()
@@ -28,6 +29,8 @@ ETAPA = os.environ.get('BOT_FTMO_ETAPA', 'reto')   # reto (fase 1 y 2 simuladas 
 TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
 FTMO_APALANCAMIENTO = float(os.environ.get('BOT_FTMO_APALANCAMIENTO', '15'))   # FTMO Swing: 1:15 en índices (Standard 1:50)
 TOPE_POSICION_USD = 0.045 * FTMO_INICIAL if MODO == 'ftmo' else None   # stop de seguridad en el servidor: ninguna posición pierde más de $4,500 (100K) si el bot se cae
+TOPE_MIN_USD = 0.005 * FTMO_INICIAL   # si queda menos margen que esto antes del freno, no abre (el stop no tendría espacio)
+COLCHON_PTS = 30                     # freno FTMO: colchón mínimo de 30 pts × $/pt abierto (cubre el ciclo de 2 s y el deslizamiento al cerrar)
 MARGEN_RESERVA = 0.85          # usa como máximo 85% del margen libre al abrir
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
@@ -79,12 +82,20 @@ def iniciar():
     return mt5.initialize(ruta, **kw) if ruta else mt5.initialize(**kw)
 
 
+def _terminal_ok():
+    ti = getattr(mt5, 'terminal_info', None)
+    if ti is None:
+        return True
+    t = ti()
+    return t is not None and bool(getattr(t, 'connected', True))
+
+
 def conectado():
-    if mt5.account_info() is not None:
+    if mt5.account_info() is not None and _terminal_ok():      # account_info puede venir de caché con el terminal desconectado
         return True
     for _ in range(3):
         mt5.shutdown(); time.sleep(3)
-        if iniciar() and mt5.account_info() is not None:
+        if iniciar() and mt5.account_info() is not None and _terminal_ok():
             log('reconexion', detalle='MT5 se había desconectado; reconectado')
             return True
     return False
@@ -110,6 +121,9 @@ def calcular_desfase(sym):
 
 
 def a_ny(t_servidor):
+    if TZ_SERVIDOR is not None:      # servidor con su propio horario de verano: convierte vela por vela
+        local = dt.datetime(1970, 1, 1) + dt.timedelta(seconds=int(t_servidor))
+        return local.replace(tzinfo=TZ_SERVIDOR).astimezone(NY).replace(tzinfo=None)
     return dt.datetime(1970, 1, 1) + dt.timedelta(seconds=int(t_servidor) - DESFASE)
 
 
@@ -309,22 +323,99 @@ def lotes_por_margen(sym, lado, lotes, precio, clave, reserva=MARGEN_RESERVA):
         return lotes
 
 
-def tope_stop(sym, lado, lotes, precio, sl):
-    """Acerca el stop del servidor para que la posición no pueda perder más de TOPE_POSICION_USD si el bot se cae.
+def margen_ftmo():
+    """US$ que la cuenta puede perder desde ahora antes del freno FTMO (pérdida diaria o máxima, lo que llegue antes). None si no aplica."""
+    if MODO != 'ftmo':
+        return None
+    try:
+        acc, d = mt5.account_info(), (leer_estado().get('dia') or {})
+        if acc is None or 'piso' not in d:
+            return None
+        return acc.equity - (d['piso'] + FTMO_FRENO * FTMO_INICIAL)
+    except Exception:
+        return None
+
+
+def _a_tick(x, ts, hacia_arriba):
+    n = x / ts
+    k = round(n)
+    n = k if abs(n - k) < 1e-6 else (math.ceil(n) if hacia_arriba else math.floor(n))
+    return n * ts
+
+
+def _stop_por_usd(info, lado, lotes, precio, usd):
+    """Stop a US$ `usd` de `precio` para `lotes`, alineado al tick y redondeado hacia el precio (nunca arriesga más). None si faltan datos."""
+    tv, ts = getattr(info, 'trade_tick_value', 0) or 0, getattr(info, 'trade_tick_size', 0) or 0
+    if tv <= 0 or ts <= 0 or lotes <= 0 or precio <= 0 or lado not in (1, -1):
+        return None
+    d = max(0.0, usd) / (lotes * tv / ts)
+    return round(_a_tick(precio - d, ts, True) if lado > 0 else _a_tick(precio + d, ts, False), info.digits)
+
+
+def tope_stop(sym, lado, lotes, precio, sl, usd=None):
+    """Stop de seguridad al ENTRAR: la posición no puede perder más de min($4,500, margen antes del freno FTMO) si el bot se cae.
+    Devuelve (stop, topado). Stop None = no hay margen para abrir. Datos del símbolo inválidos = deja el stop de la estrategia.
     Medido en 8 años: salta en ~1–3% de las operaciones y no cambia el resultado (+$0.06/día ruido, −$1.8 por operación ORB)."""
+    if TOPE_POSICION_USD is None or not TOPE_POSICION_USD or TOPE_POSICION_USD <= 0 or sl is None:
+        return sl, False
     info = mt5.symbol_info(sym)
-    if TOPE_POSICION_USD is None or info is None or lotes <= 0 or not precio or sl is None:
+    if info is None or lado not in (1, -1) or not lotes or lotes <= 0 or not precio or precio <= 0:
         return sl, False
-    dmax = TOPE_POSICION_USD / (lotes * _usd_punto_lote(info))
-    nuevo = max(sl, precio - dmax) if lado > 0 else min(sl, precio + dmax)
-    if nuevo == sl:
+    if usd is None:
+        m = margen_ftmo()
+        usd = TOPE_POSICION_USD if m is None else min(TOPE_POSICION_USD, m)
+    if usd < TOPE_MIN_USD:
+        return None, True
+    nuevo = _stop_por_usd(info, lado, lotes, precio, usd)
+    if nuevo is None or (lado > 0 and nuevo <= sl) or (lado < 0 and nuevo >= sl):
         return sl, False
-    return round(nuevo, info.digits), True
+    if (lado > 0 and nuevo >= precio) or (lado < 0 and nuevo <= precio):
+        return None, True
+    return nuevo, True
+
+
+def asegurar_tope(sym):
+    """Cada ciclo (y tras cada llenado): el stop del servidor de cada posición cumple (a) pérdida ≤ $4,500 desde la entrada real
+    (corrige el deslizamiento) y (b) pérdida desde ahora ≤ margen antes del freno FTMO (si el bot se cae después de perder en el día).
+    Con el bot vivo, (b) salta casi al mismo tiempo que el freno: no cambia la estrategia. Solo acerca stops, nunca los aleja."""
+    if TOPE_POSICION_USD is None:
+        return
+    info, t = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
+    if info is None or t is None or t.bid <= 0 or t.ask <= 0:
+        return
+    m = margen_ftmo()
+    pt = info.point or 0.01
+    minimo = max((info.trade_stops_level or 0) * pt, pt)
+    for clave in MAGIC:
+        _, ps = posicion(sym, clave)
+        for p in ps:
+            lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
+            actual = t.bid if lado > 0 else t.ask
+            cands = [_stop_por_usd(info, lado, p.volume, p.price_open, TOPE_POSICION_USD)]
+            if m is not None:
+                cands.append(_stop_por_usd(info, lado, p.volume, actual, m))
+            cands = [c for c in cands if c is not None]
+            if not cands:
+                continue
+            nuevo = max(cands) if lado > 0 else min(cands)
+            sl = p.sl if p.sl else (-1e18 if lado > 0 else 1e18)
+            if (nuevo - sl) * lado < max(1.0, 5 * (info.trade_tick_size or pt)):
+                continue                                       # ya cumple (o la mejora es mínima: no gasta solicitudes)
+            if (lado > 0 and nuevo >= actual - minimo) or (lado < 0 and nuevo <= actual + minimo):
+                cerrar(sym, clave, f'stop de seguridad: sin margen antes del límite FTMO (margen ${m:,.0f})' if m is not None else 'stop de seguridad')
+                continue
+            r = mt5.order_send(dict(action=mt5.TRADE_ACTION_SLTP, symbol=sym, position=p.ticket, sl=nuevo, tp=p.tp or 0.0, magic=MAGIC[clave]))
+            if r is not None and r.retcode == mt5.TRADE_RETCODE_DONE:
+                log('protege', NOMBRE[clave], 'compra' if lado > 0 else 'venta', p.volume, f'{nuevo:.2f}',
+                    f'stop de seguridad (máx ${TOPE_POSICION_USD:,.0f} desde la entrada' + (f'; margen antes del freno ${m:,.0f}' if m is not None else '')
+                    + f') · stop de {p.sl:.2f} a {nuevo:.2f} · posición {p.ticket}')
+            else:
+                log('error', NOMBRE[clave], detalle=f"no pude poner el stop de seguridad: {r.retcode if r else mt5.last_error()} {r.comment if r else ''}")
 
 
 def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
     t, info = mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
-    if t is None or info is None or t.bid <= 0:
+    if t is None or info is None or t.bid <= 0 or t.ask <= 0:
         log('error', NOMBRE[clave], detalle=f'sin precio ({mt5.last_error()})'); return None
     precio = t.ask if lado > 0 else t.bid
     pt = info.point or 0.01
@@ -333,10 +424,14 @@ def enviar(sym, lado, lotes, clave, ticket=None, sl=None):
                comment=clave, type_time=mt5.ORDER_TIME_GTC)
     if ticket is not None:
         req['position'] = ticket
-    elif sl is not None:
-        minimo = (info.trade_stops_level or 0) * info.point
-        if (lado > 0 and sl < precio - minimo) or (lado < 0 and sl > precio + minimo):
-            req['sl'] = round(sl, info.digits)
+    else:                                                    # apertura: SIEMPRE con stop válido; si no, no se manda
+        cierre_px = t.bid if lado > 0 else t.ask             # el stop se mide contra el precio al que se cerraría
+        minimo = max((info.trade_stops_level or 0) * pt, pt)
+        if sl is None or (lado > 0 and sl >= cierre_px - minimo) or (lado < 0 and sl <= cierre_px + minimo):
+            log('error', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes,
+                detalle=f'no abro: stop {sl} inválido (precio {cierre_px:.2f}, distancia mínima {minimo:g}); nunca se abre sin stop')
+            return None
+        req['sl'] = round(sl, info.digits)
     r = None
     for f in FILL:
         r = mt5.order_send({**req, 'type_filling': f})
@@ -372,9 +467,18 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     lotes = lotes_por_margen(sym, lado, lotes, precio, clave)
     if lotes <= 0:
         return False
-    sl, topado = tope_stop(sym, lado, lotes, precio, sl)
+    if sl is None:
+        log('error', NOMBRE[clave], detalle='orden pendiente sin stop: no la pongo'); return False
+    sl_t, topado = tope_stop(sym, lado, lotes, precio, sl)
+    if sl_t is None:
+        log('aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
     if topado:
-        motivo += f' · stop de seguridad a ${TOPE_POSICION_USD:,.0f}'
+        motivo += f' · stop de seguridad a ${abs(precio - sl_t) * lotes * _usd_punto_lote(info):,.0f}'
+    sl = sl_t
+    pt = info.point or 0.01
+    minimo = max((info.trade_stops_level or 0) * pt, pt)
+    if (lado > 0 and precio - sl < minimo) or (lado < 0 and sl - precio < minimo):
+        log('error', NOMBRE[clave], detalle=f'stop {sl} demasiado cerca de la orden ({precio:.2f}, mínimo {minimo:g}): no la pongo'); return False
     req = dict(action=mt5.TRADE_ACTION_PENDING, symbol=sym, volume=float(lotes), price=round(precio, info.digits),
                sl=round(sl, info.digits), magic=MAGIC[clave], comment=clave,
                type=mt5.ORDER_TYPE_BUY_STOP if lado > 0 else mt5.ORDER_TYPE_SELL_STOP)
@@ -421,20 +525,52 @@ def cerrar(sym, clave, motivo):
             res = (px - p.price_open) * (-lado) * p.volume * mult
             log('salida', NOMBRE[clave], 'venta' if lado < 0 else 'compra', p.volume, f'{px:.2f}',
                 f'{motivo} · entró a {p.price_open:.2f} · resultado aprox. {res:+,.2f} USD')
+    return posicion(sym, clave)[0] == 0 and not pendientes(sym, clave)
+
+
+def colchon_freno(sym):
+    """Distancia al límite FTMO a la que se cierra todo: 0.4% del capital o 30 pts × $/pt abierto (lo mayor)."""
+    base = FTMO_FRENO * FTMO_INICIAL
+    try:
+        info = mt5.symbol_info(sym)
+        upl = _usd_punto_lote(info) if info is not None else 0.0
+        vol = sum(p.volume for c in MAGIC for p in posicion(sym, c)[1])
+        return max(base, COLCHON_PTS * vol * upl)
+    except Exception:
+        return base
+
+
+def cerrar_todo(sym, motivo, intentos=1):
+    """Cierra ambas estrategias y confirma que no quede nada abierto. True = plano."""
+    for k in range(intentos):
+        planas = [cerrar(sym, clave, motivo) for clave in MAGIC]
+        if all(planas):
+            return True
+        if k < intentos - 1:
+            time.sleep(2)
+    log('error', detalle=f'quedan posiciones u órdenes abiertas tras intentar cerrar ({motivo}); reintento')
+    return False
 
 
 def abrir(sym, clave, lado, lotes, sl, motivo):
     t = mt5.symbol_info_tick(sym)
-    lotes = lotes_por_margen(sym, lado, lotes, (t.ask if lado > 0 else t.bid) if t is not None else 0.0, clave)
+    if t is None or t.bid <= 0 or t.ask <= 0:
+        log('error', NOMBRE[clave], detalle=f'sin precio para entrar ({mt5.last_error()}): no abro'); return
+    px_ref = t.ask if lado > 0 else t.bid
+    lotes = lotes_por_margen(sym, lado, lotes, px_ref, clave)
     if lotes <= 0:
         return
-    sl, topado = tope_stop(sym, lado, lotes, (t.ask if lado > 0 else t.bid) if t is not None else 0.0, sl)
+    sl_t, topado = tope_stop(sym, lado, lotes, px_ref, sl)
+    if sl_t is None:
+        log('aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
     if topado:
-        motivo += f' · stop de seguridad a ${TOPE_POSICION_USD:,.0f}'
+        motivo += ' · stop de seguridad'
+    sl = sl_t
     px = enviar(sym, lado, lotes, clave, sl=sl)
     if px is not None:
         log('entrada', NOMBRE[clave], 'compra' if lado > 0 else 'venta', lotes, f'{px:.2f}',
-            motivo + (f' · stop {sl:,.2f}' if sl else ''))
+            motivo + f' · stop {sl:,.2f} · deslizamiento {(px - px_ref) * lado:+.2f} pts')
+        asegurar_tope(sym)                         # corrige el stop si el llenado fue peor que el precio pedido
 
 
 # ===== Lógica del día =====
@@ -467,7 +603,8 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
             if not entrada_anotada('orb', hoy):
                 p = ps[0]; nivel = hi if lado_r > 0 else lo
                 log('entrada', NOMBRE['orb'], 'compra' if lado_r > 0 else 'venta', p.volume, f'{p.price_open:.2f}',
-                    f'se llenó la orden pendiente del rango de 30 min ({lo:,.2f}–{hi:,.2f}) · deslizamiento {(p.price_open - nivel) * lado_r:+.2f} pts · stop {p.sl:,.2f}')
+                    f'se llenó la orden pendiente del rango de 30 min ({lo:,.2f}–{hi:,.2f}) · deslizamiento {(p.price_open - nivel) * lado_r:+.2f} pts · stop {p.sl:,.2f} · posición {p.ticket}')
+                asegurar_tope(sym)
             if est == 'stop' or (lado_m != 0 and lado_m != lado_r):
                 cerrar(sym, 'orb', 'tocó el stop del rango de 30 min')
         elif opero_hoy('orb', hoy) or est in ('stop', 'ambos') or ahora.time() >= cierre:
@@ -491,6 +628,9 @@ def sincronizar(sym, df, hoy, ahora, lotes, cierre=CIERRE):
             if pend:
                 cancelar_pendientes(sym, 'orb', 'el precio ya rompió el rango: entra a mercado')
                 ya_dentro = posicion(sym, 'orb')[0] != 0 or opero_hoy('orb', hoy)   # una pendiente se llenó justo antes de cancelar
+                if not ya_dentro and pendientes(sym, 'orb'):
+                    log('aviso', NOMBRE['orb'], detalle='la orden pendiente no se canceló: no entro a mercado (reintento en el siguiente ciclo)')
+                    return
             if not ya_dentro:
                 abrir(sym, 'orb', lado_m, lotes['orb'], lo if lado_m > 0 else hi,
                       f'rompió el rango de 30 min ({lo:,.2f}–{hi:,.2f}) sin orden pendiente: entra a mercado')
@@ -603,7 +743,7 @@ def anotar_salidas(sym, hoy, est):
         if clave is None or dl.entry != mt5.DEAL_ENTRY_OUT or dl.reason not in razones or tk in hechas or a_ny(dl.time).date() != hoy:
             continue
         hechas.append(tk)
-        res = getattr(dl, 'profit', 0.0) + getattr(dl, 'commission', 0.0) + getattr(dl, 'swap', 0.0)
+        res = getattr(dl, 'profit', 0.0) + getattr(dl, 'commission', 0.0) + getattr(dl, 'swap', 0.0) + getattr(dl, 'fee', 0.0)
         log('salida', NOMBRE[clave], 'venta' if getattr(dl, 'type', None) == mt5.DEAL_TYPE_SELL else 'compra', getattr(dl, 'volume', ''),
             f"{getattr(dl, 'price', 0.0):.2f}", f'la cerró el servidor por {razones[dl.reason]} · resultado {res:+,.2f} USD')
 
@@ -688,11 +828,26 @@ def ftmo_fase_nueva(e, fase, equity, hoy):
                      login=viejo.get('login'), etapa=viejo.get('etapa'))
 
 
-def ftmo_dia(e, eq, hoy):
+def balance_medianoche(acc):
+    """Balance al empezar el día FTMO (00:00 Praga) = balance actual − lo realizado desde entonces. Sin historial: lo más bajo (prudente)."""
+    try:
+        m0 = dt.datetime.now(PRAGA).replace(hour=0, minute=0, second=0, microsecond=0)
+        ds = mt5.history_deals_get(m0.astimezone(UTC) - dt.timedelta(days=1), dt.datetime.now(UTC) + dt.timedelta(days=1))
+        if ds is None:
+            return min(acc.balance, acc.equity)
+        tipos = (getattr(mt5, 'DEAL_TYPE_BUY', 0), getattr(mt5, 'DEAL_TYPE_SELL', 1))
+        real = sum(d.profit + d.commission + d.swap + getattr(d, 'fee', 0.0) for d in ds
+                   if getattr(d, 'type', 0) in tipos and a_ny(d.time).replace(tzinfo=NY).astimezone(PRAGA) >= m0)
+        return acc.balance - real
+    except Exception:
+        return min(acc.balance, acc.equity)
+
+
+def ftmo_dia(e, eq, hoy, ref=None):
     """Meta y pisos del día en el reto FTMO. La fase 2 se simula sobre la misma cuenta, con nueva base."""
     f = e['ftmo']; ini = FTMO_INICIAL
     obj = f['base'] + (0.10 if f['fase'] == 1 else 0.05) * ini
-    piso = max(eq - 0.05 * ini, f['base'] - 0.10 * ini)   # pérdida diaria (vs saldo al empezar el día; sin posiciones de noche) o máxima (fija)
+    piso = max((eq if ref is None else ref) - 0.05 * ini, f['base'] - 0.10 * ini)   # pérdida diaria (vs saldo al empezar el día; sin posiciones de noche) o máxima (fija)
     if ETAPA == 'fondeada':
         meta = 1e12                                         # cuenta fondeada: sin meta del día
     else:
@@ -717,7 +872,7 @@ def ftmo_cierre(equity, hoy, opero=None):
     if not f:
         return []
     ini = FTMO_INICIAL; L = []
-    agotado = ETAPA != 'fondeada' and equity <= f['base'] - (0.10 - 2 * FTMO_FRENO) * ini
+    agotado = equity <= f['base'] - (0.10 - 2 * FTMO_FRENO) * ini
     if d.get('quemado') and not agotado:
         L.append(f"🛑 Reto FTMO fase {f['fase']}: tocó el freno 0.4% antes del límite (equity {equity:,.0f}); la cuenta sigue viva, mañana sigue.")
     if agotado:
@@ -788,6 +943,12 @@ def prueba():
     acc = mt5.account_info()
     print(f"✅ Conectado a la cuenta {acc.login} ({acc.server}) · {'DEMO' if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else 'REAL (el bot no operaría)'}"
           f" · equity {acc.equity:,.2f} {acc.currency} · apalancamiento 1:{acc.leverage}")
+    if CUENTA == 'ftmo':
+        pais = pais_ip()
+        if pais == 'US':
+            log('error', detalle='FTMO prohíbe entrar a MetaTrader desde EE. UU. y esta IP es de EE. UU.: no opero'); mt5.shutdown(); sys.exit(1)
+        if pais is None:
+            log('aviso', detalle='no pude verificar el país de la IP (FTMO prohíbe EE. UU.)')
     sym = buscar_simbolo()
     if sym is None:
         print('❌ No encontré el Nasdaq-100 (USTEC).'); sys.exit(1)
@@ -812,6 +973,14 @@ def prueba():
     print(f"   {ultimo} · zona de ruido al final del día: {'—' if pos is None else {1: 'comprado', -1: 'vendido', 0: 'fuera'}[pos]} · {txt}")
     print('✅ Prueba terminada sin operar.')
     mt5.shutdown()
+
+
+def pais_ip():
+    try:
+        with urllib.request.urlopen('https://ipinfo.io/country', timeout=5) as r:
+            return r.read().decode().strip().upper() or None
+    except Exception:
+        return None
 
 
 def main():
@@ -896,13 +1065,17 @@ def main():
                 log('aviso', detalle=f"cuenta o etapa nueva (login {acc.login}, etapa {ETAPA}) → reinicio el seguimiento FTMO con balance {acc.balance:,.2f}")
             est['ftmo'] = dict(login=acc.login, etapa=ETAPA)
             est.pop('dia', None)
-            ftmo_fase_nueva(est, 2 if ETAPA == 'fase2' else 1, acc.balance, hoy)
+            base_ini = FTMO_INICIAL if ETAPA in ('fase1', 'fase2', 'fondeada') else acc.balance   # cuenta FTMO real: el límite fijo es sobre el capital inicial
+            ftmo_fase_nueva(est, 2 if ETAPA == 'fase2' else 1, base_ini, hoy)
         if est['ftmo'].get('aprobada'):
             que = 'agotada (sin margen antes de la pérdida máxima)' if est['ftmo']['aprobada'] == 'agotado' else 'ya aprobada'
             log('aviso', detalle=f"fase {est['ftmo']['fase']} {que} en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
             guardar_estado(est); mt5.shutdown(); return
         if est.get('dia', {}).get('fecha') != str(hoy):
-            est['dia'] = ftmo_dia(est, acc.equity, hoy)
+            ref = balance_medianoche(acc)
+            if abs(ref - acc.equity) > 1:
+                log('aviso', detalle=f'balance a medianoche de Praga {ref:,.2f} ≠ equity al arrancar {acc.equity:,.2f}: el límite diario se mide desde el balance de medianoche')
+            est['dia'] = ftmo_dia(est, acc.equity, hoy, ref)
         if est['ftmo']['listo'] and ETAPA != 'fondeada':
             n_mnq = 1
             lotes = lotes_ruido = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
@@ -946,8 +1119,7 @@ def main():
     while True:
         ahora = ahora_ny()
         if ahora.time() >= cierre:
-            for clave in MAGIC:
-                cerrar(sym, clave, f'cierre del día ({cierre:%H:%M} NY)')
+            cerrar_todo(sym, f'cierre del día ({cierre:%H:%M} NY)', intentos=5)
             guardar_estado(est)
             if leer_estado().get('dia', {}).get('resumido') == str(hoy):
                 print('El resumen de hoy ya se publicó (otro tramo): no lo repito.')
@@ -971,16 +1143,19 @@ def main():
                 d['min_eq'] = eq
             R = eq - d['eq_inicio']
             if MODO == 'ftmo' and not d['cerrado']:
-                if eq <= d['piso'] + FTMO_FRENO * FTMO_INICIAL:
-                    for clave in MAGIC:
-                        cerrar(sym, clave, f'FRENO FTMO: equity {eq:,.0f} a menos de {FTMO_FRENO:.1%} del límite ({d["piso"]:,.0f})')
-                    d['cerrado'] = d['quemado'] = True
-                    log('examen', detalle=f'freno FTMO: equity {eq:,.2f} · límite {d["piso"]:,.2f}'); guardar_estado(est)
-                elif R >= d['meta']:
-                    for clave in MAGIC:
-                        cerrar(sym, clave, f'meta del día alcanzada (+{R:,.0f} USD)')
-                    d['cerrado'] = True
-                    log('meta', detalle=f'meta del día FTMO +{d["meta"]:,.0f} alcanzada ({R:+,.0f})'); guardar_estado(est)
+                colchon = colchon_freno(sym)
+                if d.get('quemado') or eq <= d['piso'] + colchon:
+                    if not d.get('quemado'):
+                        d['quemado'] = True
+                        log('examen', detalle=f'freno FTMO: equity {eq:,.2f} · límite {d["piso"]:,.2f} · colchón {colchon:,.0f}'); guardar_estado(est)
+                    if cerrar_todo(sym, f'FRENO FTMO: equity {eq:,.0f} a menos de {colchon:,.0f} del límite ({d["piso"]:,.0f})', intentos=3):
+                        d['cerrado'] = True; guardar_estado(est)
+                elif d.get('meta_ok') or R >= d['meta']:
+                    if not d.get('meta_ok'):
+                        d['meta_ok'] = True
+                        log('meta', detalle=f'meta del día FTMO +{d["meta"]:,.0f} alcanzada ({R:+,.0f})'); guardar_estado(est)
+                    if cerrar_todo(sym, f'meta del día alcanzada (+{R:,.0f} USD)', intentos=3):
+                        d['cerrado'] = True; guardar_estado(est)
             for v, s in (d['v'].items() if MODO != 'ftmo' else []):
                 if s['fijo'] is not None:
                     continue
@@ -999,10 +1174,12 @@ def main():
                 d['cerrado'] = True
                 guardar_estado(est)
             df = velas(sym)
-            if df is not None and not d['cerrado']:
+            if df is not None and not d['cerrado'] and not d.get('quemado') and not d.get('meta_ok'):
                 sincronizar(sym, df, hoy, ahora, {'orb': lotes, 'ruido': lotes_ruido}, cierre=cierre)
                 sacudida(sym, df, hoy)
                 proteger(sym, df)
+            if MODO == 'ftmo' and not d['cerrado']:
+                asegurar_tope(sym)
             anotar_salidas(sym, hoy, est)
             errores = 0
         except Exception as e:
@@ -1010,7 +1187,8 @@ def main():
             if errores in (1, 10, 50):
                 log('error', detalle=f'{type(e).__name__}: {e}'[:200])
         try:
-            time.sleep(2 if pendientes(sym, 'orb') else 10)
+            abiertas = any(posicion(sym, c)[0] != 0 for c in MAGIC) or pendientes(sym, 'orb')
+            time.sleep(2 if abiertas else 10)
         except Exception:
             time.sleep(10)
     mt5.shutdown()
