@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-23",
- "generado_ny": "2026-11-23 12:51",
+ "generado_ny": "2026-11-23 14:39",
  "errores": {},
  "calendario": [
   {
@@ -24,13 +24,25 @@
   "Trump tells CNBC ‘I made the deal’ to reinstate Nvidia’s Jensen Huang",
   "Jensen Huang reinstated as Nvidia CEO. Stock skyrockets 33%",
   "‘This establishes a bottom’: Jensen Huang’s return seen as likely to stop market sell-off, for now",
+  "An options strategy for making even more of your money back in Nvidia ",
+  "DNI Jay Clayton tapped as acting national cyber director",
   "Tech stocks rally after Nvidia board approves Jensen Huang's return as CEO",
-  "SpaceX sued by Oregon and Virginia over AI deepfake porn, Grok safety claims",
-  "CrowdStrike to buy Zscaler in $44 billion deal as AI supercharges cyberattacks ",
-  "Tokenized stocks face pushback as NYSE, Nasdaq pivot for a new market ",
+  "ESPN, NFL to show Super Bowl 61 in Imax theaters",
   "More Americans pay this Obama-era investment tax every year — how to avoid it"
  ],
  "trump": [
+  {
+   "hora": "Mon, 23 Nov 2026 18:55:49 +0000",
+   "texto": "EXTREME CLIMATE SCIENCE “BITES THE DUST!”  Climate Change activists always described their Extreme Climate Science assumptions as “settled science,” and the scenarios of doom and destruction based on “Climate Change” have dominated their outlook. Well, their Climate Science has now been debunked, withdrawn, and taken down by the UN IPCC. That’s right, the same organization that published these pro",
+   "enlace": "https://www.trumpstruth.org/statuses/43718",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Mon, 23 Nov 2026 18:00:54 +0000",
+   "texto": "Iowa is a very special place to me, a place that I won, by substantial margins, in all three Elections but, whether I won or lost, would never deter me from making a correct decision. As everyone knows, there is a Military “clean up” operation, without which, a very dangerous situation exists. In 2009, the Obama Administration improperly stored a vast number of explosives, and the Experts, who kno",
+   "enlace": "https://www.trumpstruth.org/statuses/43717",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Mon, 23 Nov 2026 16:32:47 +0000",
    "texto": "View image",
@@ -138,39 +150,27 @@
    "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117660771450282590    View image   Quoted  Donald J. Trump       View video",
    "enlace": "https://www.trumpstruth.org/statuses/43698",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 15:21:32 +0000",
-   "texto": "View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43699",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 15:09:51 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117660724070925141    View image   Quoted  Donald J. Trump       View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43692",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26798.5,
+  "precio": 26834.75,
   "cierre_anterior": 25126.5,
-  "cambio": 0.06654329094780409
+  "cambio": 0.06798599088611623
  },
  "sp_futuro": {
-  "precio": 7252.75,
+  "precio": 7269.25,
   "cierre_anterior": 6935.0,
-  "cambio": 0.045818312905551606
+  "cambio": 0.048197548666186085
  },
  "vix": {
-  "precio": 27.2,
+  "precio": 26.76,
   "cierre_anterior": 35.88999938964844,
-  "cambio": -0.24212871377631862
+  "cambio": -0.25438839634758403
  },
  "vix9d": {
-  "precio": 29.08,
+  "precio": 28.26,
   "cierre_anterior": 40.720001220703125,
-  "cambio": -0.28585463830450586
+  "cambio": -0.30599216225878034
  },
  "dealers": {
   "fecha": "2026-11-20",
@@ -194,8 +194,8 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.06654329094780409,
-  "vix": 27.2,
+  "gap_nasdaq_futuro": 0.06798599088611623,
+  "vix": 26.76,
   "vix9d_vix": 1.135,
   "dix_pct": 0.01,
   "gex_pct": 0.01,
