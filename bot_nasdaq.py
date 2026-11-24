@@ -32,6 +32,7 @@ TOPE_POSICION_USD = 0.045 * FTMO_INICIAL if MODO == 'ftmo' else None   # stop de
 TOPE_MIN_USD = 0.005 * FTMO_INICIAL   # si queda menos margen que esto antes del freno, no abre (el stop no tendría espacio)
 COLCHON_PTS = 30                     # freno FTMO: colchón mínimo de 30 pts × $/pt abierto (cubre el ciclo de 2 s y el deslizamiento al cerrar)
 MARGEN_RESERVA = 0.85          # usa como máximo 85% del margen libre al abrir
+AGOTADO = 0.02                  # cuenta agotada si quedan < 2% antes de la pérdida máxima (antes 0.8%): 8 años, mediana +$0.3k / +$2.9k, no cobra 14% / 25% (auditoria-reglas.md)
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
@@ -1199,13 +1200,13 @@ def ftmo_cierre(equity, hoy, opero=None):
     if not f:
         return []
     ini = FTMO_INICIAL; L = []
-    agotado = equity <= f['base'] - (0.10 - 2 * FTMO_FRENO) * ini
+    agotado = equity <= f['base'] - (0.10 - AGOTADO) * ini
     if d.get('quemado') and not agotado:
         L.append(f"🛑 Reto FTMO fase {f['fase']}: tocó el freno 0.4% antes del límite (equity {equity:,.0f}); la cuenta sigue viva, mañana sigue.")
     if agotado:
         e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='agotado', dias=f['dias'] + 1))
         if ETAPA == 'reto':
-            L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO: quedan menos de {2 * FTMO_FRENO:.1%} antes de la pérdida máxima. "
+            L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO: quedan menos de {AGOTADO:.0%} antes de la pérdida máxima. "
                      f"En real = reto perdido. Mañana arranca un reto nuevo (como comprar otro).")
             ftmo_fase_nueva(e, 1, equity, hoy); guardar_estado(e); return L
         f['aprobada'] = 'agotado'
