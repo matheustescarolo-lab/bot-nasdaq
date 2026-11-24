@@ -54,11 +54,14 @@
  "dia": {
   "fecha": "2026-11-24",
   "eq_inicio": 54340.78,
-  "min_eq": 54340.78,
+  "min_eq": 53112.74,
   "cerrado": false,
   "quemado": false,
   "meta": 4200.32,
   "piso": 49340.78,
-  "obj": 58491.1
+  "obj": 58491.1,
+  "salidas_srv": [
+   319422991
+  ]
  }
 }
