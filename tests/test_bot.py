@@ -424,6 +424,25 @@ class TestBotLogica(unittest.TestCase):
         bot_nasdaq.ftmo_cierre(90500.0, dt.date(2026, 11, 23), opero=True)
         self.assertEqual(bot_nasdaq.leer_estado()['ftmo'].get('aprobada'), 'agotado')
 
+    def test_agotado_al_2_por_ciento(self):
+        bot_nasdaq.FTMO_INICIAL = 100000.0
+        orig = bot_nasdaq.ETAPA; bot_nasdaq.ETAPA = 'fondeada'; self.addCleanup(setattr, bot_nasdaq, 'ETAPA', orig)
+        for equity, agotada in ((92100.0, False), (91500.0, True)):        # quedan $2,100 (sigue) / $1,500 (< 2%: agotada; antes seguía hasta < $800)
+            bot_nasdaq.guardar_estado({'ftmo': {'fase': 1, 'inicio': '2026-11-01', 'base': 100000.0, 'cierre_prev': 93000.0, 'dias': 9,
+                                                'listo': False, 'login': 1, 'etapa': 'fondeada'}, 'dia': {}})
+            bot_nasdaq.ftmo_cierre(equity, dt.date(2026, 11, 23), opero=True)
+            self.assertEqual(bot_nasdaq.leer_estado()['ftmo'].get('aprobada') == 'agotado', agotada, equity)
+
+    def test_reto_agotado_al_2_por_ciento_arranca_uno_nuevo(self):
+        bot_nasdaq.FTMO_INICIAL = 100000.0
+        orig = bot_nasdaq.ETAPA; bot_nasdaq.ETAPA = 'reto'; self.addCleanup(setattr, bot_nasdaq, 'ETAPA', orig)
+        bot_nasdaq.guardar_estado({'ftmo': {'fase': 2, 'inicio': '2026-11-01', 'base': 48491.10, 'cierre_prev': 41000.0, 'dias': 5,
+                                            'listo': False, 'login': 1, 'etapa': 'reto'}, 'dia': {}})
+        L = bot_nasdaq.ftmo_cierre(40000.0, dt.date(2026, 11, 23), opero=True)   # base − $8,491 → quedan $1,509 < $2,000
+        f = bot_nasdaq.leer_estado()['ftmo']
+        self.assertEqual((f['fase'], f['base']), (1, 40000.0))
+        self.assertIn('2%', ' '.join(L))
+
     # ===== AUDIT_006 =====
     def _ftmo(self, piso=95000.0):
         modo = bot_nasdaq.MODO; bot_nasdaq.MODO = 'ftmo'; self.addCleanup(setattr, bot_nasdaq, 'MODO', modo)
