@@ -32,7 +32,9 @@ TOPE_POSICION_USD = 0.045 * FTMO_INICIAL if MODO == 'ftmo' else None   # stop de
 TOPE_MIN_USD = 0.005 * FTMO_INICIAL   # si queda menos margen que esto antes del freno, no abre (el stop no tendría espacio)
 COLCHON_PTS = 30                     # freno FTMO: colchón mínimo de 30 pts × $/pt abierto (cubre el ciclo de 2 s y el deslizamiento al cerrar)
 MARGEN_RESERVA = 0.85          # usa como máximo 85% del margen libre al abrir
-AGOTADO = 0.02                  # cuenta agotada si quedan < 2% antes de la pérdida máxima (antes 0.8%): 8 años, mediana +$0.3k / +$2.9k, no cobra 14% / 25% (auditoria-reglas.md)
+AGOTADO = 0.02                  # reto/fase1/fase2. Fondeada: AGOTADO_FONDEADA (sin meta, toda ganancia se cobra; 8 años: igual o +$0.1k).
+AGOTADO_FONDEADA = 0.008
+# cuenta agotada si quedan < 2% antes de la pérdida máxima (antes 0.8%): 8 años, mediana +$0.3k / +$2.9k, no cobra 14% / 25% (auditoria-reglas.md)
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
@@ -566,6 +568,11 @@ def riesgo_despues(sym, excluir, desde=None):
     return tot
 
 
+def lotes_pendientes_otras(sym, excluir):
+    """AUDIT_011 A1: lotes de la mayor orden pendiente de las otras estrategias (para proyectar el colchón del freno si se llena)."""
+    return max([o.volume_current for c in MAGIC if c != excluir for o in pendientes(sym, c)], default=0.0)
+
+
 def _reserva(usd, m, riesgo_desp):
     """AUDIT_010 A1: la que entró antes deja reservado para la de después lo que esta arriesga (máx. $500, el piso de C1),
     así las dos juntas nunca pasan del margen antes del freno, ni con el bot caído. 8 años: −1.3% vs −1.7% del C1 anterior."""
@@ -597,8 +604,10 @@ def tope_stop(sym, lado, lotes, precio, sl, usd=None, clave=None):
         if usd >= TOPE_MIN_USD:
             m_r = margen_ftmo(sym, lotes, solo_realizado=True)        # para repartir: lo realizado (el flotante ya está en riesgo_abierto)
             base_r = TOPE_POSICION_USD if m_r is None else min(TOPE_POSICION_USD, m_r)
-            usd = min(usd, _tope_compartido(base_r, m_r, riesgo_abierto(sym)))
-            usd = _reserva(usd, m_r, riesgo_despues(sym, clave))       # pendientes de la otra estrategia: les deja su parte
+            usd = min(usd, _tope_compartido(base_r, m_r, riesgo_abierto(sym, excluir=clave)))
+            lp = lotes_pendientes_otras(sym, clave)                   # pendientes de la otra estrategia: les deja su parte,
+            m_res = m_r if not lp else margen_ftmo(sym, lotes + lp, solo_realizado=True)   # con el colchón de cuando se llenen
+            usd = _reserva(usd, m_res, riesgo_despues(sym, clave))
     if usd < TOPE_MIN_USD:
         return None, True
     nuevo = _stop_por_usd(info, lado, lotes, precio, usd)
@@ -632,7 +641,9 @@ def asegurar_tope(sym):
             actual = t.bid if lado > 0 else t.ask
             usd_p = usd if usd < TOPE_MIN_USD else _tope_compartido(usd, m, riesgo_abierto(sym, excluir=clave, antes_de=(p.time, p.ticket)))
             if usd >= TOPE_MIN_USD:
-                usd_p = _reserva(usd_p, m, riesgo_despues(sym, clave, (p.time, p.ticket)))
+                lp = lotes_pendientes_otras(sym, clave)
+                m_res = m if not lp else margen_ftmo(sym, lp, solo_realizado=True)
+                usd_p = _reserva(usd_p, m_res, riesgo_despues(sym, clave, (p.time, p.ticket)))
             nuevo = _stop_por_usd(info, lado, p.volume, p.price_open, usd_p)
             if nuevo is None:
                 continue
@@ -1200,19 +1211,23 @@ def ftmo_cierre(equity, hoy, opero=None):
     if not f:
         return []
     ini = FTMO_INICIAL; L = []
-    agotado = equity <= f['base'] - (0.10 - AGOTADO) * ini
+    umbral = AGOTADO_FONDEADA if ETAPA == 'fondeada' else AGOTADO
+    agotado = equity <= f['base'] - (0.10 - umbral) * ini
+    opero = hubo_operaciones(hoy) if opero is None else bool(opero)   # FTMO solo cuenta como día de trading el que tiene al menos una operación
     if d.get('quemado') and not agotado:
         L.append(f"🛑 Reto FTMO fase {f['fase']}: tocó el freno 0.4% antes del límite (equity {equity:,.0f}); la cuenta sigue viva, mañana sigue.")
     if agotado:
-        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], inicio=f['inicio'], fin=str(hoy), resultado='agotado', dias=f['dias'] + 1))
+        e.setdefault('historial_ftmo', []).append(dict(fase=f['fase'], etapa=ETAPA, inicio=f['inicio'], fin=str(hoy), resultado='agotado',
+                                                       dias=f['dias'] + (1 if opero else 0)))
         if ETAPA == 'reto':
-            L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO: quedan menos de {AGOTADO:.0%} antes de la pérdida máxima. "
+            L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO: quedan menos de {umbral:.1%} antes de la pérdida máxima. "
                      f"En real = reto perdido. Mañana arranca un reto nuevo (como comprar otro).")
             ftmo_fase_nueva(e, 1, equity, hoy); guardar_estado(e); return L
         f['aprobada'] = 'agotado'
-        L.append(f"🔥 Reto FTMO fase {f['fase']} AGOTADO (equity {equity:,.0f}): el bot deja de operar esta cuenta. Compra un reto nuevo, cambia los secretos y BOT_FTMO_ETAPA.")
+        quien = 'Cuenta FTMO fondeada' if ETAPA == 'fondeada' else f"Reto FTMO fase {f['fase']}"
+        L.append(f"🔥 {quien} AGOTADA (equity {equity:,.0f}; quedan menos de {umbral:.1%} antes de la pérdida máxima): el bot deja de operar esta cuenta. "
+                 f"Compra un reto nuevo, cambia los secretos y BOT_FTMO_ETAPA.")
         guardar_estado(e); return L
-    opero = hubo_operaciones(hoy) if opero is None else bool(opero)   # FTMO solo cuenta como día de trading el que tiene al menos una operación
     f['dias'] += 1 if opero else 0; f['cierre_prev'] = equity
     gan = equity - f['base']; obj = (0.10 if f['fase'] == 1 else 0.05) * ini
     if ETAPA == 'fondeada':
@@ -1416,7 +1431,8 @@ def main():
             ftmo_fase_nueva(est, 2 if ETAPA == 'fase2' else 1, base_ini, hoy)
         if est['ftmo'].get('aprobada'):
             que = 'agotada (sin margen antes de la pérdida máxima)' if est['ftmo']['aprobada'] == 'agotado' else 'ya aprobada'
-            log('aviso', detalle=f"fase {est['ftmo']['fase']} {que} en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
+            quien = 'cuenta fondeada' if ETAPA == 'fondeada' else f"fase {est['ftmo']['fase']}"
+            log('aviso', detalle=f"{quien} {que} en esta cuenta: no opero. Cambia a la siguiente cuenta y BOT_FTMO_ETAPA.")
             guardar_estado(est); mt5.shutdown(); return
         if est.get('dia', {}).get('fecha') != str(hoy):
             ref = balance_medianoche(acc, (est.get('ftmo') or {}).get('cierre_prev'))

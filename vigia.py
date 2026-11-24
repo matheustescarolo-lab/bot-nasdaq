@@ -43,7 +43,7 @@ def decidir(ahora, corridas, feriados, medios):
         dur = (dt.datetime.fromisoformat(u['updated_at'].replace('Z', '+00:00'))
                - dt.datetime.fromisoformat(u['created_at'].replace('Z', '+00:00'))).total_seconds()
         if u.get('conclusion') == 'success' and dur < 240 and 'vigia' not in (u.get('display_title') or '').lower():
-            return False, 'la última corrida terminó bien en minutos (prueba o el bot decidió no operar): no relanzo'
+            return False, 'la última corrida terminó bien en minutos (el bot decidió no operar): no relanzo'
         if u.get('conclusion') == 'success' and dur < 240 and 'vigia' in (u.get('display_title') or '').lower():
             return False, 'mi último relanzamiento terminó bien en minutos (el bot decidió no operar): no insisto'
     return True, 'no hay ninguna corrida del bot en horario de bolsa'

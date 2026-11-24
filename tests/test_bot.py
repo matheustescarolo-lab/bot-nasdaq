@@ -110,6 +110,8 @@ class TestBotLogica(unittest.TestCase):
         self._orig_estado = bot_nasdaq.ESTADO
         self._orig_bit = bot_nasdaq.BITACORA
         bot_nasdaq._AVISO_MARGEN.clear(); bot_nasdaq._SALIDA_PROT.clear(); bot_nasdaq._SACUDIDA_VISTA.clear()
+        for f in ('positions_get', 'orders_get', 'history_deals_get'):          # AUDIT_011 A2: cada prueba parte de MT5 vacío
+            setattr(bot_nasdaq.mt5, f, MagicMock(return_value=[]))
         bot_nasdaq.ESTADO = str(self.tmp_dir / 'estado_test.json')
         bot_nasdaq.BITACORA = str(self.tmp_dir / 'bitacora_test.csv')
         for p in (bot_nasdaq.ESTADO, bot_nasdaq.BITACORA):
@@ -426,12 +428,18 @@ class TestBotLogica(unittest.TestCase):
 
     def test_agotado_al_2_por_ciento(self):
         bot_nasdaq.FTMO_INICIAL = 100000.0
-        orig = bot_nasdaq.ETAPA; bot_nasdaq.ETAPA = 'fondeada'; self.addCleanup(setattr, bot_nasdaq, 'ETAPA', orig)
-        for equity, agotada in ((92100.0, False), (91500.0, True)):        # quedan $2,100 (sigue) / $1,500 (< 2%: agotada; antes seguía hasta < $800)
+        orig = bot_nasdaq.ETAPA; self.addCleanup(setattr, bot_nasdaq, 'ETAPA', orig)
+        # fase1: 2% (quedan $1,500 → agotada); fondeada: 0.8% (AUDIT_011: sin meta, sigue con $1,500 y se agota con $500)
+        for etapa, equity, agotada in (('fase1', 92100.0, False), ('fase1', 91500.0, True), ('fondeada', 91500.0, False), ('fondeada', 90500.0, True)):
+            bot_nasdaq.ETAPA = etapa
             bot_nasdaq.guardar_estado({'ftmo': {'fase': 1, 'inicio': '2026-11-01', 'base': 100000.0, 'cierre_prev': 93000.0, 'dias': 9,
-                                                'listo': False, 'login': 1, 'etapa': 'fondeada'}, 'dia': {}})
-            bot_nasdaq.ftmo_cierre(equity, dt.date(2026, 11, 23), opero=True)
-            self.assertEqual(bot_nasdaq.leer_estado()['ftmo'].get('aprobada') == 'agotado', agotada, equity)
+                                                'listo': False, 'login': 1, 'etapa': etapa}, 'dia': {}})
+            L = bot_nasdaq.ftmo_cierre(equity, dt.date(2026, 11, 23), opero=False)
+            e = bot_nasdaq.leer_estado()
+            self.assertEqual(e['ftmo'].get('aprobada') == 'agotado', agotada, (etapa, equity))
+            if agotada:                                                       # A3: días solo con operaciones, etapa y texto
+                self.assertEqual((e['historial_ftmo'][-1]['dias'], e['historial_ftmo'][-1]['etapa']), (9, etapa))
+                self.assertIn('fondeada' if etapa == 'fondeada' else 'fase 1', ' '.join(L))
 
     def test_reto_agotado_al_2_por_ciento_arranca_uno_nuevo(self):
         bot_nasdaq.FTMO_INICIAL = 100000.0
@@ -441,7 +449,7 @@ class TestBotLogica(unittest.TestCase):
         L = bot_nasdaq.ftmo_cierre(40000.0, dt.date(2026, 11, 23), opero=True)   # base − $8,491 → quedan $1,509 < $2,000
         f = bot_nasdaq.leer_estado()['ftmo']
         self.assertEqual((f['fase'], f['base']), (1, 40000.0))
-        self.assertIn('2%', ' '.join(L))
+        self.assertIn('2.0%', ' '.join(L))
 
     # ===== AUDIT_006 =====
     def _ftmo(self, piso=95000.0):
@@ -809,8 +817,24 @@ class TestBotLogica(unittest.TestCase):
         enviadas = self._dos_posiciones(sl_orb=None, sl_ruido=27000.0 - 375.0, pend=pend)
         bot_nasdaq.asegurar_tope('USTEC')
         ruido = [r for r in enviadas if r.get('position') == 2]
-        # margen con 12 lotes abiertos: 100,000 − 95,000 − 400 = 4,600; deja $500 a la pendiente → $4,100
-        self.assertAlmostEqual((27000.0 - ruido[0]['sl']) * 12, 4100.0, delta=12)
+        # margen proyectado con los 12 lotes de la pendiente (AUDIT_011 A1): 100,000 − 95,000 − 30 × 24 = 4,280; deja $500 → $3,780
+        self.assertAlmostEqual((27000.0 - ruido[0]['sl']) * 12, 3780.0, delta=12)
+
+    def test_a1_pendiente_con_el_colchon_de_cuando_se_llene(self):
+        # AUDIT_011 A1: ruido 24 lotes abierto + pendiente ORB 24 lotes → colchón 30 × 48 = $1,440 → margen 3,560; ruido cede $500 → $3,060
+        self._con_tope(); self._ftmo(piso=95000.0)
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=27000.0, ask=27000.5))
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=100000.0, balance=100000.0))
+        ruido = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=0, ticket=2, volume=24.0, price_open=27000.0, sl=27000.0 - 4500 / 24, tp=0.0, time=200)
+        pend = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=bot_nasdaq.mt5.ORDER_TYPE_BUY_STOP, ticket=7, volume_current=24.0,
+                                     price_open=27100.0, sl=27100.0 - 500 / 24, tp=0.0, type_time=0, time_expiration=0)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[ruido]); bot_nasdaq.mt5.orders_get = MagicMock(return_value=[pend])
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        bot_nasdaq.asegurar_tope('USTEC')
+        r = [x for x in enviadas if x.get('position') == 2]
+        self.assertAlmostEqual((27000.0 - r[0]['sl']) * 24, 3060.0, delta=24)      # + $500 de la pendiente = $3,560 = margen proyectado
 
     def test_a1_reparto_sin_doble_conteo_del_flotante(self):
         self._dos_posiciones(sl_orb=27000.0 - 250.0, sl_ruido=None)          # ORB arriesga $3,000 y va perdiendo $2,000
