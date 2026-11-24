@@ -56,3 +56,5 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-24 14:48:02,tamaño,,,,,volatilidad 14 días 2.87% vs normal 1.46% → peso 0.51 · hoy: rango 30 min 2 MNQ (4 lotes) · zona de ruido 2 MNQ (4 lotes)
 2026-11-24 14:48:02,inicio,,,,,"tramo de la mañana · USTEC · 4 lotes por estrategia (≈2 MNQ) · equity 54,340.78 · FTMO fase 1 · meta del día +4,200 · freno en equity 49,741 · cuenta demo · trabaja hasta las 12:50 NY"
 2026-11-24 14:48:02,contexto,,,,,09:00 CB Consumer Confidence · reportaron ayer: [] · hoy: [] / [] · VIX 29.34
+2026-11-24 15:00:04,pendiente,Rango 30 min,compra,4.0,26434.11,"compra si rompe arriba del rango de 30 min (26,127.10–26,434.10) · stop 26,127.10 · orden 381945731"
+2026-11-24 15:00:04,pendiente,Rango 30 min,venta,4.0,26127.09,"venta si rompe abajo del rango de 30 min (26,127.10–26,434.10) · stop 26,434.10 · orden 381945739"
