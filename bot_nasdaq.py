@@ -378,7 +378,10 @@ def lotes_del_dia(info, f_orb, f_ruido):
 def lotes_relleno(info):
     """Tamaño de los días de relleno (meta lograda antes de los 4 días): 1 MNQ en 100K (2 lotes), 0.5 MNQ en 50K (1 lote)."""
     paso = info.volume_step or 0.01
-    return round(round(lotes_por_mnq(info) * ESCALA_FTMO / paso) * paso, 8)
+    lt = round(round(lotes_por_mnq(info) * ESCALA_FTMO / paso) * paso, 8)
+    lt = max(lt, getattr(info, 'volume_min', 0.0) or paso)        # AUDIT_012 A1: nunca 0 ni debajo del mínimo (100K: sin cambios)
+    vmax = getattr(info, 'volume_max', None)
+    return min(lt, float(vmax)) if vmax else lt
 
 
 def lotes_por_mnq(info):
@@ -1349,7 +1352,9 @@ def backfill_ftmo_50k(e, hoy):
     return L
 
 
-def s50_dia(e):
+def s50_dia(e, hoy=None):
+    if 'ftmo_50k' not in e:                                         # AUDIT_012 A2: sin historial, arranca la sombra hoy
+        s50_fase_nueva(e, 1, FTMO_50K_INICIAL, hoy or ahora_ny().date())
     s, ini = e['ftmo_50k'], FTMO_50K_INICIAL
     obj = s['base'] + (0.10 if s['fase'] == 1 else 0.05) * ini
     return dict(eq_inicio=s['eq'], min_eq=s['eq'], fijo=None, quemado=False,
@@ -1357,14 +1362,15 @@ def s50_dia(e):
                 piso=max(s['eq'] - 0.05 * ini, s['base'] - 0.10 * ini), obj=obj)
 
 
-def s50_intradia(est, R):
+def s50_intradia(est, R, colchon=None):
     """Congela la sombra si toca su freno o su meta del día. Nunca cambia est['dia']['cerrado'] ni manda órdenes."""
     s50 = (est.get('dia') or {}).get('sombra_50k')
     if not SOMBRA_50K or not s50 or s50.get('fijo') is not None:
         return
     r50 = round(R * FTMO_50K_ESCALA, 2); eq50 = s50['eq_inicio'] + r50
     s50['min_eq'] = min(s50['min_eq'], eq50)
-    if eq50 <= s50['piso'] + FTMO_FRENO * FTMO_50K_INICIAL:
+    col = max(FTMO_FRENO * FTMO_50K_INICIAL, colchon or 0.0)        # AUDIT_012 A3: el colchón de 100K escalado (30 pts × $/pt)
+    if eq50 <= s50['piso'] + col:
         s50['fijo'], s50['quemado'] = r50, True
         log('sombra50k', detalle=f'sombra 50K: freno (equity virtual {eq50:,.2f} · límite {s50["piso"]:,.2f}) → día fijo en {r50:+,.2f}')
         guardar_estado(est)
@@ -1439,7 +1445,7 @@ def prueba():
     hoy_df, previos = partir_dias(df, ultimo)
     print(f'✅ Historia: {len(previos)} días completos antes del {ultimo} (se necesitan 14)')
     n, peso, vh, vm = contratos_hoy(sym)
-    print(f"{'✅' if vh else '⚠️'} Volatilidad (horario normal, 14 días): {vh if vh is None else f'{vh:.2%}'} vs normal {vm if vm is None else f'{vm:.2%}'} → peso {peso:.2f} → {n} MNQ con base {CONTRATOS}")
+    print(f"{'✅' if vh else '⚠️'} Volatilidad (horario normal, 14 días): {vh if vh is None else f'{vh:.2%}'} vs normal {vm if vm is None else f'{vm:.2%}'} → peso {peso:.2f} → {lotes_del_dia(info, peso, peso)[0]:g} MNQ ({lotes_del_dia(info, peso, peso)[2]:g} lotes) con base {CONTRATOS:g}")
     niv = niveles_orb(hoy_df)
     if niv:
         lado, est = modelo_orb(hoy_df, *niv)
@@ -1578,7 +1584,7 @@ def main():
             if SOMBRA_50K:
                 try:
                     backfill_ftmo_50k(est, hoy)                       # crea la sombra o completa días que falten (idempotente)
-                    est['dia']['sombra_50k'] = s50_dia(est)
+                    est['dia']['sombra_50k'] = s50_dia(est, hoy)
                 except Exception as ex:
                     log('aviso', detalle=f'sombra 50K: no pude iniciar el día ({ex})')
         if est['ftmo']['listo'] and ETAPA != 'fondeada':                     # relleno hasta los 4 días: 1 MNQ en 100K (2 lotes), 0.5 MNQ en 50K
@@ -1655,7 +1661,7 @@ def main():
                 d['min_eq'] = eq
             R = eq - d['eq_inicio']
             try:
-                s50_intradia(est, R)
+                s50_intradia(est, R, colchon_freno(sym) * FTMO_50K_ESCALA if MODO == 'ftmo' else None)
             except Exception as ex:
                 log_cada('s50', 'aviso', detalle=f'sombra 50K: {ex}', cada=600)
             if MODO == 'ftmo' and not d['cerrado']:
