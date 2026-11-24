@@ -62,3 +62,7 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-24 15:00:23,entrada,Rango 30 min,compra,4.0,26434.11,"se llenó la orden pendiente del rango de 30 min (26,127.10–26,434.10) · deslizamiento +0.01 pts · stop 26,127.10 · posición 381945731"
 2026-11-24 15:25:15,salida,Rango 30 min,venta,4.0,26127.10,"la cerró el servidor por stop · resultado -1,228.04 USD · deal 319422991"
 2026-11-24 17:50:03,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
+2026-11-24 17:52:56,tamaño,,,,,fondos apalancados recortaron fuerte (COT) → ×0.5
+2026-11-24 17:52:56,tamaño,,,,,volatilidad 14 días 2.87% vs normal 1.46% → peso 0.51 · hoy: rango 30 min 2 MNQ (4 lotes) · zona de ruido 2 MNQ (4 lotes)
+2026-11-24 17:52:56,inicio,,,,,"tramo de la tarde · USTEC · 4 lotes por estrategia (≈2 MNQ) · equity 53,112.74 · FTMO fase 1 · meta del día +4,200 · freno en equity 49,741 · cuenta demo · trabaja hasta las 15:58 NY"
+2026-11-24 17:52:56,contexto,,,,,09:00 CB Consumer Confidence · reportaron ayer: [] · hoy: [] / [] · VIX 26.33
