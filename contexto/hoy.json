@@ -1,34 +1,27 @@
 {
- "fecha": "2026-11-23",
- "generado_ny": "2026-11-23 14:39",
+ "fecha": "2026-11-24",
+ "generado_ny": "2026-11-24 09:45",
  "errores": {},
  "calendario": [
   {
-   "hora_mx": "08:45",
-   "evento": "Flash Manufacturing PMI",
+   "hora_mx": "09:00",
+   "evento": "CB Consumer Confidence",
    "impacto": "Medium",
-   "estimado": "54.5",
-   "anterior": "56.0"
-  },
-  {
-   "hora_mx": "08:45",
-   "evento": "Flash Services PMI",
-   "impacto": "Medium",
-   "estimado": "55.6",
-   "anterior": "57.9"
+   "estimado": "92.4",
+   "anterior": "91.7"
   }
  ],
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Trump tells CNBC ‘I made the deal’ to reinstate Nvidia’s Jensen Huang",
-  "Jensen Huang reinstated as Nvidia CEO. Stock skyrockets 33%",
-  "‘This establishes a bottom’: Jensen Huang’s return seen as likely to stop market sell-off, for now",
-  "An options strategy for making even more of your money back in Nvidia ",
-  "DNI Jay Clayton tapped as acting national cyber director",
-  "Tech stocks rally after Nvidia board approves Jensen Huang's return as CEO",
-  "ESPN, NFL to show Super Bowl 61 in Imax theaters",
-  "More Americans pay this Obama-era investment tax every year — how to avoid it"
+  "Anthropic stock falls below $83 IPO price, but analysts are still largely positive",
+  "Jensen Huang is back as Nvidia CEO, but investigations and risks remain",
+  "Best Buy reports comparable sales growth of 6.1%, highest in five years",
+  "Six key questions raised by Jensen Huang's return to Nvidia",
+  "Commercial real estate activity falls 14% in October, as interest rates rise",
+  "Drugmaker Insmed shares rally 14% after Sanofi agrees to buy it in pharma’s biggest deal in three years",
+  "Russia accuses NATO member Estonia of hostile actions ‘on the verge of unleashing open war’",
+  "Congress shreds Nvidia's 'outrageous' decision to bring back Huang: 'Failure of character'"
  ],
  "trump": [
   {
@@ -153,31 +146,31 @@
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26834.75,
-  "cierre_anterior": 25126.5,
-  "cambio": 0.06798599088611623
+  "precio": 26258.25,
+  "cierre_anterior": 26808.0,
+  "cambio": -0.0205069382273948
  },
  "sp_futuro": {
-  "precio": 7269.25,
-  "cierre_anterior": 6935.0,
-  "cambio": 0.048197548666186085
+  "precio": 7165.0,
+  "cierre_anterior": 7254.5,
+  "cambio": -0.012337170032393652
  },
  "vix": {
-  "precio": 26.76,
-  "cierre_anterior": 35.88999938964844,
-  "cambio": -0.25438839634758403
+  "precio": 29.34,
+  "cierre_anterior": 26.6200008392334,
+  "cambio": 0.10217877817485954
  },
  "vix9d": {
-  "precio": 28.26,
-  "cierre_anterior": 40.720001220703125,
-  "cambio": -0.30599216225878034
+  "precio": 27.76,
+  "cierre_anterior": 27.760000228881836,
+  "cambio": -8.245022775632549e-09
  },
  "dealers": {
-  "fecha": "2026-11-20",
-  "dix": 0.3885,
-  "dix_pct": 0.01,
-  "gex": -2.16,
-  "gex_pct": 0.01
+  "fecha": "2026-11-23",
+  "dix": 0.3906,
+  "dix_pct": 0.02,
+  "gex": 1.62,
+  "gex_pct": 0.1
  },
  "fondos": {
   "reporte": "2026-11-17",
@@ -194,11 +187,11 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.06798599088611623,
-  "vix": 26.76,
-  "vix9d_vix": 1.135,
-  "dix_pct": 0.01,
-  "gex_pct": 0.01,
+  "gap_nasdaq_futuro": -0.0205069382273948,
+  "vix": 29.34,
+  "vix9d_vix": 1.043,
+  "dix_pct": 0.02,
+  "gex_pct": 0.1,
   "fondos_semana": "recortaron fuerte",
   "trump_posts_de_mercado": 7
  }
