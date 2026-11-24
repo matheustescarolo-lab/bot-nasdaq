@@ -58,3 +58,5 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-24 14:48:02,contexto,,,,,09:00 CB Consumer Confidence · reportaron ayer: [] · hoy: [] / [] · VIX 29.34
 2026-11-24 15:00:04,pendiente,Rango 30 min,compra,4.0,26434.11,"compra si rompe arriba del rango de 30 min (26,127.10–26,434.10) · stop 26,127.10 · orden 381945731"
 2026-11-24 15:00:04,pendiente,Rango 30 min,venta,4.0,26127.09,"venta si rompe abajo del rango de 30 min (26,127.10–26,434.10) · stop 26,434.10 · orden 381945739"
+2026-11-24 15:00:23,cancela,Rango 30 min,venta,4.0,26127.09,orden pendiente cancelada: se llenó la del otro lado
+2026-11-24 15:00:23,entrada,Rango 30 min,compra,4.0,26434.11,"se llenó la orden pendiente del rango de 30 min (26,127.10–26,434.10) · deslizamiento +0.01 pts · stop 26,127.10 · posición 381945731"
