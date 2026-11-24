@@ -1,5 +1,5 @@
 name: Bot Nasdaq (demo)
-run-name: ${{ inputs.origen == 'vigia' && 'Bot Nasdaq (relanzado por el vigia)' || 'Bot Nasdaq (demo)' }}
+run-name: ${{ inputs.prueba == true && 'Bot Nasdaq (prueba)' || (inputs.origen == 'vigia' && 'Bot Nasdaq (relanzado por el vigia)' || 'Bot Nasdaq (demo)') }}
 
 # Lo lanza cron-job.org dos veces por día de bolsa (hora de Nueva York): 9:45 (tramo de la mañana) y 12:40 (tramo de la tarde).
 # El bot decide solo qué tramo le toca según la hora. Si los dos coinciden, el de la tarde espera a que termine el de la mañana.
@@ -192,6 +192,7 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Bitacora y estado Nasdaq ($BOT_CUENTA) $(date -u +%Y-%m-%d)"
           git checkout -q -- .   # descarta cambios ya guardados en otro lado (p. ej. contexto/, que sube el trabajo de Linux): si no, el pull falla
+          git clean -fdq contexto/ 2>/dev/null || true   # y archivos nuevos de contexto/ que el otro trabajo ya subió (AUDIT_010 A10)
           ok=0
           for i in 1 2 3 4 5; do   # en conflicto gana el estado del bot (también contra lo que subió en vivo durante el día)
             if git pull -q --rebase -X theirs && git push; then ok=1; break; fi

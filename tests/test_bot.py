@@ -348,6 +348,7 @@ class TestBotLogica(unittest.TestCase):
         modo = bot_nasdaq.MODO; bot_nasdaq.MODO = 'ftmo'; self.addCleanup(setattr, bot_nasdaq, 'MODO', modo)
         bot_nasdaq.mt5.positions_get = MagicMock(return_value=[])
         bot_nasdaq.guardar_estado({'dia': {'piso': 95000.0}})            # freno en 95,400
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=[])            # sin pendientes de la otra estrategia
         bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=97400.0, balance=97400.0, margin_free=1e6))
         sl, top = bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26000.0)   # margen $2,000 → 166.67 pts
         self.assertTrue(top); self.assertAlmostEqual(sl, 26833.34, places=2)
@@ -559,6 +560,7 @@ class TestBotLogica(unittest.TestCase):
                             index=pd.date_range('2026-11-19 09:30', periods=78, freq='5min'))
         full_df = pd.concat([prev, df])
         bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(ask=110.05, bid=110.0))   # aislado (AUDIT_010 A10)
         hechos = []
         orig = (bot_nasdaq.abrir, bot_nasdaq.poner_pendiente)
         bot_nasdaq.abrir = lambda *a, **k: hechos.append('abrir')
@@ -672,9 +674,9 @@ class TestBotLogica(unittest.TestCase):
             bot_nasdaq.leer_estado(estricto=True)
 
     def test_login_no_queda_a_la_vista(self):
-        self.assertNotIn('25396689', bot_nasdaq.id_cuenta(25396689))
-        self.assertEqual(bot_nasdaq.id_cuenta(25396689), bot_nasdaq.id_cuenta('25396689'))
-        self.assertEqual(bot_nasdaq.cuenta_txt(25396689), '…689')
+        self.assertNotIn('12345678', bot_nasdaq.id_cuenta(12345678))
+        self.assertEqual(bot_nasdaq.id_cuenta(12345678), bot_nasdaq.id_cuenta('12345678'))
+        self.assertEqual(bot_nasdaq.cuenta_txt(12345678), '…678')
 
     def test_cerrar_viejas_cancela_pendientes_de_ayer(self):
         bot_nasdaq.DESFASE = 7 * 3600
@@ -746,6 +748,127 @@ class TestBotLogica(unittest.TestCase):
         if p.exists():
             data = json.loads(p.read_text(encoding='utf-8'))
             self.assertNotEqual((data.get('ftmo') or {}).get('login'), 1)
+
+    # ===== AUDIT_010 =====
+    def _dos_posiciones(self, sl_orb, sl_ruido, pend=()):
+        self._con_tope(); self._ftmo(piso=95000.0)
+        bot_nasdaq.mt5.symbol_info = MagicMock(return_value=self._info())
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(bid=27000.0, ask=27000.5))
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=100000.0, balance=100000.0))
+        ps = []
+        if sl_orb is not None:
+            ps.append(types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=0, ticket=1, volume=12.0, price_open=27000.0, sl=sl_orb, tp=0.0, time=100))
+        if sl_ruido is not None:
+            ps.append(types.SimpleNamespace(magic=bot_nasdaq.MAGIC['ruido'], type=0, ticket=2, volume=12.0, price_open=27000.0, sl=sl_ruido, tp=0.0, time=200))
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=ps)
+        bot_nasdaq.mt5.orders_get = MagicMock(return_value=list(pend))
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r) or types.SimpleNamespace(retcode=10009))
+        return enviadas
+
+    def test_a1_la_primera_cede_la_reserva_si_la_segunda_entro_con_el_piso(self):
+        # margen 100,000 − 95,000 − colchón 720 = 4,280. ORB arriesga $4,500 y ruido entró con el piso de $500:
+        # ORB baja a 4,280 − 500 = $3,780 → las dos juntas = margen (antes sumaban $5,000 = el límite diario)
+        enviadas = self._dos_posiciones(sl_orb=27000.0 - 375.0, sl_ruido=27000.0 - 500 / 12)
+        bot_nasdaq.asegurar_tope('USTEC')
+        orb = [r for r in enviadas if r.get('position') == 1]
+        self.assertEqual(len(orb), 1)
+        self.assertAlmostEqual((27000.0 - orb[0]['sl']) * 12, 3780.0, delta=12)
+        self.assertFalse([r for r in enviadas if r.get('position') == 2])
+
+    def test_a1_con_perdida_realizada_las_dos_juntas_no_pasan_del_margen(self):
+        enviadas = self._dos_posiciones(sl_orb=27000.0 - 375.0, sl_ruido=27000.0 - 500 / 12)
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=99000.0, balance=99000.0))   # −$1,000 cerrados
+        bot_nasdaq.asegurar_tope('USTEC')
+        orb = [r for r in enviadas if r.get('position') == 1]
+        riesgo = (27000.0 - orb[0]['sl']) * 12 + 500
+        self.assertLessEqual(riesgo, 99000.0 - 95000.0 - 720 + 1)          # ≤ margen antes del freno (antes: $5,100 = piso − $100)
+
+    def test_a1_la_de_antes_reserva_para_la_pendiente_de_la_otra(self):
+        pend = [types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=bot_nasdaq.mt5.ORDER_TYPE_BUY_STOP, ticket=7, volume_current=12.0,
+                                      price_open=27100.0, sl=26900.0, tp=0.0, type_time=0, time_expiration=0)]
+        enviadas = self._dos_posiciones(sl_orb=None, sl_ruido=27000.0 - 375.0, pend=pend)
+        bot_nasdaq.asegurar_tope('USTEC')
+        ruido = [r for r in enviadas if r.get('position') == 2]
+        # margen con 12 lotes abiertos: 100,000 − 95,000 − 400 = 4,600; deja $500 a la pendiente → $4,100
+        self.assertAlmostEqual((27000.0 - ruido[0]['sl']) * 12, 4100.0, delta=12)
+
+    def test_a1_reparto_sin_doble_conteo_del_flotante(self):
+        self._dos_posiciones(sl_orb=27000.0 - 250.0, sl_ruido=None)          # ORB arriesga $3,000 y va perdiendo $2,000
+        bot_nasdaq.mt5.account_info = MagicMock(return_value=types.SimpleNamespace(equity=98000.0, balance=100000.0))
+        sl, top = bot_nasdaq.tope_stop('USTEC', 1, 12.0, 27000.0, 26730.0, clave='ruido')
+        self.assertAlmostEqual((27000.0 - sl) * 12, 1280.0, delta=12)        # 4,280 − 3,000 (antes: piso de $500)
+
+    def test_a2_sin_la_apertura_no_inventa_la_manana(self):
+        idx = pd.date_range('2026-11-20 10:15', periods=4, freq='5min')
+        df = pd.DataFrame({'o': [100.0] * 4, 'h': [101.0] * 4, 'l': [99.0] * 4, 'c': [100.0] * 4, 'v': [1] * 4}, index=idx)
+        h, _ = bot_nasdaq.partir_dias(df, dt.date(2026, 11, 20))
+        self.assertEqual(h.index[0].time(), dt.time(10, 15))                # sincronizar() ve que falta la apertura y no opera
+
+    def test_a3_subida_fallida_se_reintenta(self):
+        bot_nasdaq.guardar_estado({'x': 1})
+        orig = (bot_nasdaq._subir_archivo, bot_nasdaq.time.sleep, dict(bot_nasdaq._SUBIDA))
+        vueltas = []
+        def dormir(_):
+            vueltas.append(1)
+            if len(vueltas) > 1:
+                raise KeyboardInterrupt
+        bot_nasdaq._subir_archivo = lambda f: False
+        bot_nasdaq.time.sleep = dormir
+        bot_nasdaq._SUBIDA.update(pend=True, ult=0)
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                bot_nasdaq._hilo_subida()
+            self.assertTrue(bot_nasdaq._SUBIDA['pend'])
+        finally:
+            bot_nasdaq._subir_archivo, bot_nasdaq.time.sleep = orig[0], orig[1]
+            bot_nasdaq._SUBIDA.clear(); bot_nasdaq._SUBIDA.update(orig[2])
+
+    def test_a4_vigia_ignora_pruebas_y_respeta_cancelaciones(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import vigia
+        lun = dt.datetime(2026, 11, 23, 10, 5, tzinfo=vigia.NY)
+        c = lambda st, con, ini, fin, t='Bot Nasdaq (demo)': dict(status=st, conclusion=con, created_at=ini, updated_at=fin, display_title=t)
+        prueba = c('completed', 'success', '2026-11-23T14:20:00Z', '2026-11-23T14:23:00Z', 'Bot Nasdaq (prueba)')
+        self.assertTrue(vigia.decidir(lun, [prueba], set(), set())[0])           # prueba temprano + cron-job falló → sí relanza
+        cancelada = c('completed', 'cancelled', '2026-11-23T14:45:00Z', '2026-11-23T15:00:00Z')
+        self.assertFalse(vigia.decidir(lun, [cancelada], set(), set())[0])       # paro manual: no lo deshace
+
+    def test_a5_salida_por_proteccion_sobrevive_al_relevo(self):
+        hoy = bot_nasdaq.ahora_ny().date()
+        bot_nasdaq.log('salida', bot_nasdaq.NOMBRE['ruido'], 'venta', 2.0, '100.00', 'stop de seguridad: sin margen antes del límite FTMO · entró a 101')
+        bot_nasdaq.log('salida', bot_nasdaq.NOMBRE['orb'], 'venta', 2.0, '100.00', 'cierre del día · entró a 101')
+        bot_nasdaq._SALIDA_PROT.clear()                                      # proceso nuevo
+        bot_nasdaq.cargar_salidas_prot(hoy)
+        self.assertIn('ruido', bot_nasdaq._SALIDA_PROT); self.assertNotIn('orb', bot_nasdaq._SALIDA_PROT)
+        bot_nasdaq.mt5.history_deals_get = MagicMock(return_value=[])
+        self.assertTrue(bot_nasdaq.salio_por_stop('ruido', bot_nasdaq._SALIDA_PROT['ruido'] - dt.timedelta(minutes=5)))
+
+    def test_a6_sacudida_reintenta_si_no_pudo_cerrar(self):
+        bot_nasdaq.DESFASE = 7 * 3600
+        idx = pd.date_range('2026-11-20 10:00', periods=5, freq='5min')
+        c = [100, 100.1, 99.2, 99.3, 99.4]
+        df = pd.DataFrame({'o': c, 'h': c, 'l': c, 'c': c, 'v': [1] * 5}, index=idx)
+        entrada = (dt.datetime(2026, 11, 20, 10, 2) - dt.datetime(1970, 1, 1)).total_seconds() + 7 * 3600
+        pos = types.SimpleNamespace(magic=bot_nasdaq.MAGIC['orb'], type=0, ticket=9, volume=2.0, price_open=100.0, sl=99.0, tp=0.0, time=entrada)
+        bot_nasdaq.mt5.positions_get = MagicMock(return_value=[pos])
+        intentos = []
+        orig = bot_nasdaq.cerrar; bot_nasdaq.cerrar = lambda sym, clave, motivo: intentos.append(motivo) and False
+        self.addCleanup(setattr, bot_nasdaq, 'cerrar', orig)
+        bot_nasdaq.sacudida('USTEC', df, dt.date(2026, 11, 20))
+        bot_nasdaq.sacudida('USTEC', df, dt.date(2026, 11, 20))
+        self.assertEqual(len(intentos), 2)                                   # el requote no la deja abierta para siempre
+
+    def test_a8_desfase_ignora_tick_viejo(self):
+        orig = bot_nasdaq.ahora_ny
+        bot_nasdaq.ahora_ny = lambda: dt.datetime(2026, 11, 26, 11, 0)       # feriado (Thanksgiving)
+        self.addCleanup(setattr, bot_nasdaq, 'ahora_ny', orig)
+        bot_nasdaq.mt5.symbol_info_tick = MagicMock(return_value=types.SimpleNamespace(time=bot_nasdaq.time.time() - 86400, bid=1.0, ask=1.0))
+        bot_nasdaq.calcular_desfase('USTEC')
+        self.assertEqual(bot_nasdaq.DESFASE, 7 * 3600)
+        bot_nasdaq.ahora_ny = lambda: dt.datetime(2026, 11, 24, 11, 0)       # día normal, tick de hace un día: también se ignora
+        bot_nasdaq.calcular_desfase('USTEC')
+        self.assertEqual(bot_nasdaq.DESFASE, 7 * 3600)
 
 
 if __name__ == '__main__':

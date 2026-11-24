@@ -87,11 +87,15 @@ def _api_contenido(metodo, ruta, cuerpo=None):
         return json.loads(r.read().decode() or '{}')
 
 
+_ARCHIVOS = threading.Lock()   # en Windows, os.replace falla si otro hilo tiene el archivo abierto (AUDIT_010 A3)
+
+
 def _subir_archivo(local):
     """Sube un archivo a main con la API (sin git): si el runner muere a media sesión, el estado y la bitácora quedan guardados."""
     ruta = os.path.basename(local)
-    with open(local, 'rb') as fh:
-        contenido = base64.b64encode(fh.read()).decode()
+    with _ARCHIVOS:
+        with open(local, 'rb') as fh:
+            contenido = base64.b64encode(fh.read()).decode()
     for _ in range(3):
         sha = _SUBIDA['sha'].get(ruta)
         if sha is None:
@@ -120,8 +124,8 @@ def _hilo_subida():
             _SUBIDA['pend'], _SUBIDA['ult'] = False, time.time()
             for f in (ESTADO, BITACORA):
                 try:
-                    if os.path.exists(f):
-                        _subir_archivo(f)
+                    if os.path.exists(f) and not _subir_archivo(f):
+                        _SUBIDA['pend'] = True                # 3 choques seguidos (409/422): lo reintenta en la próxima vuelta
                 except Exception as e:                   # no detiene al bot: lo reintenta en la próxima subida
                     _SUBIDA['pend'] = True
                     print(f'aviso: no pude subir {os.path.basename(f)} al repo ({e})', flush=True)
@@ -140,7 +144,7 @@ def marcar_subida():
 def log(evento, estrategia='', lado='', lotes='', precio='', detalle=''):
     f = BITACORA; nuevo = not os.path.exists(f)
     fila = [dt.datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S'), evento, estrategia, lado, lotes, precio, detalle]
-    with open(f, 'a', newline='', encoding='utf-8') as fh:
+    with _ARCHIVOS, open(f, 'a', newline='', encoding='utf-8') as fh:
         w = csv.writer(fh)
         if nuevo:
             w.writerow(['hora_UTC', 'evento', 'estrategia', 'lado', 'lotes', 'precio', 'detalle'])
@@ -188,10 +192,14 @@ def calcular_desfase(sym):
     global DESFASE
     t = mt5.symbol_info_tick(sym)
     ahora = ahora_ny()
-    abierto = ahora.weekday() < 5 and T('09:30') <= ahora.time() < T('16:00')     # con mercado cerrado el último tick puede ser viejo
+    abierto = (ahora.weekday() < 5 and T('09:30') <= ahora.time() < T('16:00')     # con mercado cerrado el último tick puede ser viejo
+               and str(ahora.date()) not in FERIADOS)
     srv_menos_utc = round((t.time - time.time()) / 3600) * 3600 if (t and t.time and abierto) else None
     ny_menos_utc = int(dt.datetime.now(NY).utcoffset().total_seconds())
     DESFASE = 7 * 3600
+    if srv_menos_utc is not None and abs(srv_menos_utc - ny_menos_utc - DESFASE) > 3 * 3600:
+        log('aviso', detalle=f'hora del servidor rara ({srv_menos_utc / 3600:+.0f} h vs UTC; tick viejo?): uso +7 h sobre Nueva York')
+        srv_menos_utc = None
     if srv_menos_utc is not None and srv_menos_utc - ny_menos_utc != DESFASE:
         DESFASE = srv_menos_utc - ny_menos_utc
         log('aviso', detalle=f'el servidor no va 7 h adelante de Nueva York: uso {DESFASE / 3600:+.1f} h')
@@ -211,6 +219,7 @@ def velas(sym):
     df = pd.DataFrame(r)
     df.index = [a_ny(x) for x in df['time']]
     df = df.rename(columns={'open': 'o', 'high': 'h', 'low': 'l', 'close': 'c', 'tick_volume': 'v'})[['o', 'h', 'l', 'c', 'v']]
+    df = df[~df.index.duplicated(keep='last')]
     return df[(df.index.time >= T('09:30')) & (df.index.time < T('16:00'))]
 
 
@@ -233,7 +242,7 @@ def partir_dias(df, hoy):
     dias = {d: g for d, g in df.groupby(df.index.date)}
     previos = [_en_rejilla(g, d) for d, g in sorted(dias.items()) if d < hoy and str(d) not in FERIADOS and len(g) >= VELAS_DIA_MIN]
     h = dias.get(hoy, df.iloc[0:0])
-    if len(h):
+    if len(h) and h.index[0].time() <= T('09:35'):      # sin la apertura no se rellena: sincronizar() no opera (AUDIT_010 A2)
         h = _en_rejilla(h, hoy, h.index.max())
     return h, previos
 
@@ -314,9 +323,10 @@ def leer_estado(estricto=False):
 
 def guardar_estado(e):
     tmp = ESTADO + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as fh:
-        json.dump(e, fh, ensure_ascii=False, indent=1)
-    os.replace(tmp, ESTADO)
+    with _ARCHIVOS:
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(e, fh, ensure_ascii=False, indent=1)
+        os.replace(tmp, ESTADO)
     marcar_subida()
 
 
@@ -361,6 +371,30 @@ def opero_hoy(clave, hoy):
 
 
 _SALIDA_PROT = {}     # salidas que hizo el bot por protección (escalera, stop de seguridad): esperan al siguiente chequeo
+
+
+_MOTIVOS_PROT = ('stop de seguridad:', 'el precio ya está en el piso asegurado')
+
+
+def cargar_salidas_prot(hoy):
+    """AUDIT_010 A5: al arrancar (relevo de las 12:50 o relanzamiento del vigía) recupera de la bitácora las salidas por
+    protección de hoy, para que la zona de ruido espere al siguiente chequeo igual que si el proceso no se hubiera reiniciado."""
+    por_nombre = {v: k for k, v in NOMBRE.items()}
+    try:
+        with _ARCHIVOS, open(BITACORA, newline='', encoding='utf-8') as fh:
+            filas = list(csv.DictReader(fh))
+    except Exception:
+        return
+    for r in filas:
+        clave = por_nombre.get(r.get('estrategia') or '')
+        if clave is None or r.get('evento') != 'salida' or not (r.get('detalle') or '').startswith(_MOTIVOS_PROT):
+            continue
+        try:
+            t = dt.datetime.strptime(r['hora_UTC'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=UTC).astimezone(NY).replace(tzinfo=None)
+        except (KeyError, ValueError):
+            continue
+        if t.date() == hoy and (_SALIDA_PROT.get(clave) is None or t > _SALIDA_PROT[clave]):
+            _SALIDA_PROT[clave] = t
 
 
 def salio_por_stop(clave, desde_ny):
@@ -510,15 +544,44 @@ def riesgo_abierto(sym, excluir=None, antes_de=None):
     return tot
 
 
+def riesgo_despues(sym, excluir, desde=None):
+    """US$ que arriesgan las otras estrategias con lo que entró DESPUÉS de `desde`=(time, ticket) (desde=None: ninguna posición)
+    más su orden pendiente de mayor riesgo (de un par OCO solo se llena una). Con el stop en break even o mejor, su riesgo es 0."""
+    info = mt5.symbol_info(sym)
+    if info is None:
+        return 0.0
+    upl, tot = _usd_punto_lote(info), 0.0
+    for clave in MAGIC:
+        if clave == excluir:
+            continue
+        if desde is not None:
+            for p in posicion(sym, clave)[1]:
+                if (p.time, p.ticket) > desde:
+                    lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
+                    tot += (max(0.0, (p.price_open - p.sl) * lado) * p.volume * upl) if p.sl else (TOPE_POSICION_USD or 0.0)
+        pend = [(max(0.0, (o.price_open - o.sl) * (1 if o.type == mt5.ORDER_TYPE_BUY_STOP else -1)) * o.volume_current * upl)
+                if getattr(o, 'sl', 0) else (TOPE_POSICION_USD or 0.0) for o in pendientes(sym, clave)]
+        tot += max(pend, default=0.0)
+    return tot
+
+
+def _reserva(usd, m, riesgo_desp):
+    """AUDIT_010 A1: la que entró antes deja reservado para la de después lo que esta arriesga (máx. $500, el piso de C1),
+    así las dos juntas nunca pasan del margen antes del freno, ni con el bot caído. 8 años: −1.3% vs −1.7% del C1 anterior."""
+    if m is None or riesgo_desp <= 0:
+        return usd
+    return min(usd, m - min(riesgo_desp, TOPE_MIN_USD))
+
+
 def _tope_compartido(base, m, riesgo_otras):
     """C1: la posición que entra después recibe lo que deja la que ya estaba (mínimo $500, nunca deja de entrar por esto).
-    8 años: −1% de ganancia; con el bot caído, las dos juntas no pasan de ~$5,000."""
+    Con _reserva (la de antes deja $500), las dos juntas no pasan del margen antes del freno ni con el bot caído."""
     if m is None:
         return base
     return min(base, max(TOPE_MIN_USD, m - riesgo_otras))
 
 
-def tope_stop(sym, lado, lotes, precio, sl, usd=None):
+def tope_stop(sym, lado, lotes, precio, sl, usd=None, clave=None):
     """Stop de seguridad al ENTRAR: la posición no puede perder más de min($4,500, margen antes del freno FTMO) si el bot se cae.
     Devuelve (stop, topado). Stop None = no hay margen para abrir. Datos del símbolo inválidos = deja el stop de la estrategia.
     Medido en 8 años: salta en ~1–3% de las operaciones y no cambia el resultado (+$0.06/día ruido, −$1.8 por operación ORB)."""
@@ -528,10 +591,13 @@ def tope_stop(sym, lado, lotes, precio, sl, usd=None):
     if info is None or lado not in (1, -1) or not lotes or lotes <= 0 or not precio or precio <= 0:
         return sl, False
     if usd is None:
-        m = margen_ftmo(sym, lotes)
+        m = margen_ftmo(sym, lotes)                                   # para entrar: lo menor entre balance y equity
         usd = TOPE_POSICION_USD if m is None else min(TOPE_POSICION_USD, m)
         if usd >= TOPE_MIN_USD:
-            usd = _tope_compartido(usd, m, riesgo_abierto(sym))
+            m_r = margen_ftmo(sym, lotes, solo_realizado=True)        # para repartir: lo realizado (el flotante ya está en riesgo_abierto)
+            base_r = TOPE_POSICION_USD if m_r is None else min(TOPE_POSICION_USD, m_r)
+            usd = min(usd, _tope_compartido(base_r, m_r, riesgo_abierto(sym)))
+            usd = _reserva(usd, m_r, riesgo_despues(sym, clave))       # pendientes de la otra estrategia: les deja su parte
     if usd < TOPE_MIN_USD:
         return None, True
     nuevo = _stop_por_usd(info, lado, lotes, precio, usd)
@@ -564,6 +630,8 @@ def asegurar_tope(sym):
             lado = 1 if p.type == mt5.POSITION_TYPE_BUY else -1
             actual = t.bid if lado > 0 else t.ask
             usd_p = usd if usd < TOPE_MIN_USD else _tope_compartido(usd, m, riesgo_abierto(sym, excluir=clave, antes_de=(p.time, p.ticket)))
+            if usd >= TOPE_MIN_USD:
+                usd_p = _reserva(usd_p, m, riesgo_despues(sym, clave, (p.time, p.ticket)))
             nuevo = _stop_por_usd(info, lado, p.volume, p.price_open, usd_p)
             if nuevo is None:
                 continue
@@ -571,8 +639,8 @@ def asegurar_tope(sym):
             if (nuevo - sl) * lado <= 0:
                 continue                                       # el stop actual ya es igual o más cercano
             if usd < TOPE_MIN_USD or (lado > 0 and nuevo >= actual - minimo) or (lado < 0 and nuevo <= actual + minimo):
-                cerrar(sym, clave, f'stop de seguridad: sin margen antes del límite FTMO ({txt})')
-                _SALIDA_PROT[clave] = ahora_ny()
+                if cerrar(sym, clave, f'stop de seguridad: sin margen antes del límite FTMO ({txt})'):
+                    _SALIDA_PROT[clave] = ahora_ny()
                 continue
             if (nuevo - sl) * lado < paso:
                 continue                                       # mejora mínima: no gasta solicitudes
@@ -688,7 +756,7 @@ def poner_pendiente(sym, clave, lado, lotes, precio, sl, motivo):
     if sl is None:
         log('error', NOMBRE[clave], detalle='orden pendiente sin stop: no la pongo'); return False
     precio = alinear(info, precio, lado > 0)              # compra arriba / venta abajo del rango, en la rejilla de ticks
-    sl_t, topado = tope_stop(sym, lado, lotes, precio, sl)
+    sl_t, topado = tope_stop(sym, lado, lotes, precio, sl, clave=clave)
     if sl_t is None:
         log_cada(('sin_margen_pend', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no pongo la orden'); return False
     if topado:
@@ -779,7 +847,7 @@ def abrir(sym, clave, lado, lotes, sl, motivo, ref=None):
     lotes = lotes_por_margen(sym, lado, lotes, px_ref, clave)
     if lotes <= 0:
         return
-    sl_t, topado = tope_stop(sym, lado, lotes, px_ref, sl)
+    sl_t, topado = tope_stop(sym, lado, lotes, px_ref, sl, clave=clave)
     if sl_t is None:
         log_cada(('sin_margen_abrir', clave), 'aviso', NOMBRE[clave], detalle='sin margen antes del freno FTMO para el stop de seguridad: no abro'); return
     if topado:
@@ -925,8 +993,8 @@ def proteger(sym, df):
             actual = t.bid if lado > 0 else t.ask
             minimo = (info.trade_stops_level or 0) * pt
             if (lado > 0 and actual - nuevo <= minimo) or (lado < 0 and nuevo - actual <= minimo):
-                cerrar(sym, clave, f'el precio ya está en el piso asegurado (+{piso_real:,.0f} USD / +{pts_piso:.0f} pts)')
-                _SALIDA_PROT[clave] = ahora_ny()
+                if cerrar(sym, clave, f'el precio ya está en el piso asegurado (+{piso_real:,.0f} USD / +{pts_piso:.0f} pts)'):
+                    _SALIDA_PROT[clave] = ahora_ny()
                 continue
             r = mt5.order_send(dict(action=mt5.TRADE_ACTION_SLTP, symbol=sym, position=p.ticket, sl=nuevo, tp=p.tp or 0.0,
                                     magic=MAGIC[clave]))
@@ -973,10 +1041,11 @@ def sacudida(sym, df, hoy):
         if tj < t0 or (_SACUDIDA_VISTA.get(tk) is not None and tj <= _SACUDIDA_VISTA[tk]):
             continue
         mov = d.c.iloc[j] / d.c.iloc[j - 1] - 1
-        _SACUDIDA_VISTA[tk] = tj
         if abs(mov) > SACUDIDA and lado * mov < 0:
-            cerrar(sym, 'orb', f'sacudida en contra: la vela de las {tj:%H:%M} NY se movió {mov:+.2%}')
-            return
+            if cerrar(sym, 'orb', f'sacudida en contra: la vela de las {tj:%H:%M} NY se movió {mov:+.2%}'):
+                _SACUDIDA_VISTA[tk] = tj
+            return                                     # si no cerró, la misma vela lo vuelve a intentar en el próximo ciclo
+        _SACUDIDA_VISTA[tk] = tj
 
 
 def anotar_salidas(sym, hoy, est):
@@ -1330,6 +1399,7 @@ def main():
     except EstadoDanado as e:
         log('error', detalle=f'el archivo de estado está dañado ({e}): NO opero a ciegas. Revisar {os.path.basename(ESTADO)}'); mt5.shutdown(); sys.exit(1)
     est.pop('examen', None)
+    cargar_salidas_prot(hoy)
     if MODO == 'ftmo':
         f0 = est.get('ftmo') or {}
         if f0 and f0.get('login') is None:            # estado de antes de este cambio: es la misma cuenta
@@ -1365,7 +1435,7 @@ def main():
         vs = {}
         for v, base in VERSIONES.items():
             n_v = max(1, round(base * f_orb))
-            vs[v] = dict(n=n_v, f=n_v / n_mnq, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
+            vs[v] = dict(n=n_v, f=(n_v / n_mnq) if n_mnq else 0.0, meta=meta_del_dia(est['versiones'][v]['saldo']), fijo=None, quemado=False)
         est['dia'] = dict(fecha=str(hoy), eq_inicio=acc.equity, min_eq=acc.equity, cerrado=False, v=vs)
     guardar_estado(est)
     if MODO != 'ftmo':
