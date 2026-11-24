@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-24",
- "generado_ny": "2026-11-24 09:45",
+ "generado_ny": "2026-11-24 12:50",
  "errores": {},
  "calendario": [
   {
@@ -14,16 +14,34 @@
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Anthropic stock falls below $83 IPO price, but analysts are still largely positive",
-  "Jensen Huang is back as Nvidia CEO, but investigations and risks remain",
-  "Best Buy reports comparable sales growth of 6.1%, highest in five years",
-  "Six key questions raised by Jensen Huang's return to Nvidia",
-  "Commercial real estate activity falls 14% in October, as interest rates rise",
+  "Jensen Huang to face DC grilling the same day Nvidia releases new products at GTC",
+  "Anthropic sinks 8%, falling below $83 IPO price, but analysts are still largely positive",
+  "Consumer confidence shoots up after Democrats' midterm victories — though inflation worries persist",
+  "AG Blanche, FBI’s Patel dodge questions about Jensen Huang investigation",
   "Drugmaker Insmed shares rally 14% after Sanofi agrees to buy it in pharma’s biggest deal in three years",
-  "Russia accuses NATO member Estonia of hostile actions ‘on the verge of unleashing open war’",
+  "Six key questions raised by Jensen Huang's return to Nvidia",
+  "Kushner-backed OakNorth secures U.S. bank charter as global digital banks push into America",
   "Congress shreds Nvidia's 'outrageous' decision to bring back Huang: 'Failure of character'"
  ],
  "trump": [
+  {
+   "hora": "Tue, 24 Nov 2026 17:40:10 +0000",
+   "texto": "I am pleased to nominate Jim O’Neill to serve as Judge on the United States District Court for the Middle District of North Carolina. Jim has the strong support of both North Carolina Senators, Ted Budd and Thom Tillis. Jim has served as the District Attorney of Forsyth County since 2009, and has been a prosecutor in that office since 1997. He has a deep track record of being tough on crime, and p",
+   "enlace": "https://www.trumpstruth.org/statuses/43721",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Tue, 24 Nov 2026 17:34:33 +0000",
+   "texto": "I want to thank Uzbekistan's Highly Respected President, Shavkat Mirziyoyev, for the beautiful Uzbek Gazebos (or “Aywans”) gifted to me in honor of our Country’s 250 years of Independence. It was my Honor to do a flyover in Marine One during last week’s Gazebo Ceremony featuring Uzbek Ambassador Furqat Sidikov and Interior Secretary Doug Burgum — and the Gazebos look STUNNING!  Uzbek master crafts",
+   "enlace": "https://www.trumpstruth.org/statuses/43720",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Tue, 24 Nov 2026 17:08:51 +0000",
+   "texto": "I am proud to announce that the FIFA Women's World Cup 2031 will take place in the United States! After hosting the Most Successful World Cup in History, no Country is better positioned than the United States to be home to the largest Women's Sporting Event in History. The FIFA Women's World Cup 2031 will bring Generational Economic Impact to the United States, grow the sport of Soccer throughout ",
+   "enlace": "https://www.trumpstruth.org/statuses/43719",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Mon, 23 Nov 2026 18:55:49 +0000",
    "texto": "EXTREME CLIMATE SCIENCE “BITES THE DUST!”  Climate Change activists always described their Extreme Climate Science assumptions as “settled science,” and the scenarios of doom and destruction based on “Climate Change” have dominated their outlook. Well, their Climate Science has now been debunked, withdrawn, and taken down by the UN IPCC. That’s right, the same organization that published these pro",
@@ -125,45 +143,27 @@
    "texto": "View video",
    "enlace": "https://www.trumpstruth.org/statuses/43702",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 17:20:26 +0000",
-   "texto": "View image",
-   "enlace": "https://www.trumpstruth.org/statuses/43700",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 17:20:20 +0000",
-   "texto": "The Market is down more than 6 Trillion Dollars since the Democrats’ rather strange “win” on November 3rd. NASDAQ, by itself, is down 20%. This is 100% due to the fact that the Democrats are “BAD” due to their Anti Growth, and Retribution Only, Policies, and worse. If they don't change, FAST, it will only get worse. But fear not, our Country will soon be STRONG AGAIN — Lots of good things happenin",
-   "enlace": "https://www.trumpstruth.org/statuses/43701",
-   "habla_de_mercado": true
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 15:21:43 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117660771450282590    View image   Quoted  Donald J. Trump       View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43698",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26258.25,
+  "precio": 26359.0,
   "cierre_anterior": 26808.0,
-  "cambio": -0.0205069382273948
+  "cambio": -0.016748731721874077
  },
  "sp_futuro": {
-  "precio": 7165.0,
+  "precio": 7229.0,
   "cierre_anterior": 7254.5,
-  "cambio": -0.012337170032393652
+  "cambio": -0.003515059618168004
  },
  "vix": {
-  "precio": 29.34,
+  "precio": 26.33,
   "cierre_anterior": 26.6200008392334,
-  "cambio": 0.10217877817485954
+  "cambio": -0.010894095796044723
  },
  "vix9d": {
-  "precio": 27.76,
+  "precio": 26.87,
   "cierre_anterior": 27.760000228881836,
-  "cambio": -8.245022775632549e-09
+  "cambio": -0.032060526712671567
  },
  "dealers": {
   "fecha": "2026-11-23",
@@ -187,12 +187,12 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": -0.0205069382273948,
-  "vix": 29.34,
+  "gap_nasdaq_futuro": -0.016748731721874077,
+  "vix": 26.33,
   "vix9d_vix": 1.043,
   "dix_pct": 0.02,
   "gex_pct": 0.1,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 7
+  "trump_posts_de_mercado": 6
  }
 }
