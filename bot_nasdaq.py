@@ -9,7 +9,7 @@ Solo opera en cuentas DEMO. Bitácora: bitacora_nasdaq.csv. Al final del día pu
 «📊 Update diario del bot Nasdaq» (GitHub te avisa por correo).
 Conexión: variables MT5_LOGIN, MT5_PASSWORD, MT5_SERVER y MT5_PATH.
 """
-import os, sys, csv, json, math, time, base64, hashlib, threading, datetime as dt, urllib.request, urllib.error
+import os, re, sys, csv, json, math, time, base64, hashlib, threading, datetime as dt, urllib.request, urllib.error
 from zoneinfo import ZoneInfo
 import pandas as pd
 import MetaTrader5 as mt5
@@ -26,6 +26,7 @@ MODO = (os.environ.get('BOT_MODO') or ('ftmo' if CUENTA == 'ftmo' else 'lucid'))
 BITACORA = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'bitacora_nasdaq{SUF}.csv')
 FTMO_INICIAL = float(os.environ.get('BOT_FTMO_INICIAL', '100000'))   # capital inicial de la cuenta FTMO
 ETAPA = os.environ.get('BOT_FTMO_ETAPA', 'reto')   # reto (fase 1 y 2 simuladas en la misma cuenta) | fase1 | fase2 | fondeada
+ESCALA_FTMO = FTMO_INICIAL / 100000.0   # colchones de meta y tamaño de relleno proporcionales al capital (100K = 1.0: sin cambios)
 TOPE_FTMO = 2.0      # máximo 2× la base por estrategia en FTMO (8 años: −5–8% de profit, misma probabilidad de cobrar)
 FTMO_APALANCAMIENTO = float(os.environ.get('BOT_FTMO_APALANCAMIENTO', '15'))   # FTMO Swing: 1:15 en índices (Standard 1:50)
 TOPE_POSICION_USD = 0.045 * FTMO_INICIAL if MODO == 'ftmo' else None   # stop de seguridad en el servidor: ninguna posición pierde más de $4,500 (100K) si el bot se cae
@@ -38,7 +39,7 @@ AGOTADO_FONDEADA = 0.008
 FTMO_FRENO = 0.004              # cierra todo al quedar a 0.4% del capital de los límites de FTMO (tocarlos = cuenta perdida)
 DOLARES_POR_PUNTO = 2.0          # 1 MNQ = US$2 por punto del Nasdaq-100
 # ===== Modo examen (desde el 18-nov-2026): agresivo pero con reglas, simulando el examen de Lucid Flex 50K =====
-CONTRATOS = int(os.environ.get('BOT_MNQ', '4'))                 # MNQ por estrategia que opera la demo (= versión B)
+CONTRATOS = float(os.environ.get('BOT_MNQ', '4'))                 # MNQ por estrategia que opera la demo (= versión B)
 # 3 versiones del examen en paralelo con los mismos trades (escaladas): A 3 MNQ, B 4 MNQ, C 6 MNQ. La demo opera B y solo cierra
 # todo cuando las 3 terminaron su día (meta o quemado). Simulación 8 años: B la más robusta; ver claude/mnq-lucid.md.
 VERSIONES = {'A': 3, 'B': 4, 'C': 6}
@@ -274,7 +275,7 @@ def contratos_hoy(sym):
             v = ((d['high'] - d['low']) / d['close'].shift(1)).rolling(14).mean()
             hoy, med, fuente = float(v.iloc[-1]), float(v.iloc[-250:].median()), f'velas diarias 24 h ({e1})'
         except Exception as e:
-            log('aviso', detalle=f'no pude calcular la volatilidad ({e}); uso {CONTRATOS} MNQ')
+            log('aviso', detalle=f'no pude calcular la volatilidad ({e}); uso {CONTRATOS:g} MNQ')
             return CONTRATOS, 1.0, None, None
     peso = min(1.5, max(0.5, med / hoy))
     if fuente != 'horario normal':
@@ -350,6 +351,34 @@ def meta_del_dia(bal):
     else:
         meta = META_DIARIA
     return max(meta, 300.0)
+
+
+def _lotes_directos(x, info):
+    """Lotes = x redondeado al paso del símbolo, respetando el mínimo y el máximo; 0 si redondea a 0 (ese día no opera)."""
+    paso = info.volume_step or 0.01
+    lt = round(round(x / paso) * paso, 8)
+    if lt <= 0:
+        return 0.0
+    lt = max(lt, getattr(info, 'volume_min', 0.0) or 0.0)
+    vmax = getattr(info, 'volume_max', None)
+    return min(lt, float(vmax)) if vmax else lt
+
+
+def lotes_del_dia(info, f_orb, f_ruido):
+    """MNQ y lotes de hoy por estrategia. 100K con MNQ enteros: exactamente el cálculo de siempre (MNQ enteros; puede dar 0, igual que
+    la simulación). Otro capital (50K: BOT_MNQ 3 / 2) o MNQ fraccional: lotes directos = lotes por MNQ × MNQ × capas, al paso del símbolo."""
+    paso, lpm = info.volume_step or 0.01, lotes_por_mnq(info)
+    if FTMO_INICIAL == 100000 and CONTRATOS.is_integer():
+        n_mnq, n_ruido = round(CONTRATOS * f_orb), round(CONTRATOS * f_ruido)
+        return (n_mnq, n_ruido) + tuple(round(round(lpm * n / paso) * paso, 8) for n in (n_mnq, n_ruido))
+    n_mnq, n_ruido = CONTRATOS * f_orb, CONTRATOS * f_ruido
+    return (n_mnq, n_ruido) + tuple(_lotes_directos(lpm * n, info) for n in (n_mnq, n_ruido))
+
+
+def lotes_relleno(info):
+    """Tamaño de los días de relleno (meta lograda antes de los 4 días): 1 MNQ en 100K (2 lotes), 0.5 MNQ en 50K (1 lote)."""
+    paso = info.volume_step or 0.01
+    return round(round(lotes_por_mnq(info) * ESCALA_FTMO / paso) * paso, 8)
 
 
 def lotes_por_mnq(info):
@@ -1101,9 +1130,10 @@ def resumen(sym, hoy):
         n = sum(1 for d in mios if d.entry == mt5.DEAL_ENTRY_IN)
         total += pnl; total_ops += n
         L.append(f"• {NOMBRE[clave]}: {'sin operaciones' if n == 0 else f'{n} operación(es) · {pnl:+,.2f} USD'}")
-    L.append(f'🧮 Total del día: {total:+,.2f} USD (base {CONTRATOS} MNQ por estrategia, ajustado por volatilidad)')
+    L.append(f'🧮 Total del día: {total:+,.2f} USD (base {CONTRATOS:g} MNQ por estrategia, ajustado por volatilidad)')
     opero = total_ops > 0 or any(entrada_anotada(c, hoy) for c in MAGIC)
     L += ftmo_cierre(acc.equity, hoy, opero=opero) if MODO == 'ftmo' else cerrar_dia_examen(acc.equity, hoy)
+    L += s50_cierre(acc.equity, hoy, opero)
     errores = 0
     try:
         with open(BITACORA, encoding='utf-8') as fh:
@@ -1190,7 +1220,7 @@ def ftmo_dia(e, eq, hoy, ref=None):
     if ETAPA == 'fondeada':
         meta = 1e12                                         # cuenta fondeada: sin meta del día
     else:
-        meta = 50.0 if f['listo'] else max(obj - eq + 50.0, 100.0)
+        meta = 50.0 * ESCALA_FTMO if f['listo'] else max(obj - eq + 50.0 * ESCALA_FTMO, 100.0 * ESCALA_FTMO)   # 100K: $50 / $100
     return dict(fecha=str(hoy), eq_inicio=eq, min_eq=eq, cerrado=False, quemado=False, meta=meta, piso=piso, obj=obj)
 
 
@@ -1252,6 +1282,114 @@ def ftmo_cierre(equity, hoy, opero=None):
                  f"{' (meta lograda, completa los 4 días mínimos)' if f['listo'] else ''} · margen mañana ${equity - piso:,.0f}")
     guardar_estado(e)
     return L
+
+
+# ===================== Sombra FTMO 50K (0.5×): solo cálculo y registro, nunca toca órdenes ni el estado de 100K =====================
+FTMO_50K_INICIAL = 50000.0
+FTMO_50K_ESCALA = 0.5            # 3 MNQ en el reto / 2 en la fondeada (en USTEC/US100.cash, la mitad siempre da lotes enteros)
+SOMBRA_50K = CUENTA == 'tickmill' and MODO == 'ftmo'
+SOMBRA_50K_DESDE = '2026-11-19'  # primer día del ensayo FTMO en Tickmill
+
+
+def s50_fase_nueva(e, fase, eq, hoy):
+    e['ftmo_50k'] = dict(fase=fase, inicio=str(hoy), base=eq, eq=eq, cierre_prev=eq, dias=0, listo=False,
+                         ultimo=(e.get('ftmo_50k') or {}).get('ultimo'))
+
+
+def s50_cerrar_dia(e, fecha, pnl, opero, freno=False):
+    """Cierra un día de la sombra con las reglas de FTMO 2-Step 50K (etapa reto: fase 1 y 2 en la misma cuenta). Idempotente por fecha."""
+    if 'ftmo_50k' not in e:
+        s50_fase_nueva(e, 1, FTMO_50K_INICIAL, fecha)
+    s, ini, L = e['ftmo_50k'], FTMO_50K_INICIAL, []
+    if s.get('ultimo') and str(fecha) <= s['ultimo']:
+        return []
+    pnl = round(float(pnl), 2)
+    s['eq'] = round(s['eq'] + pnl, 2); s['ultimo'] = str(fecha); s['dias'] += 1 if opero else 0; s['cierre_prev'] = s['eq']
+    gan, obj = s['eq'] - s['base'], (0.10 if s['fase'] == 1 else 0.05) * ini
+    hist = e.setdefault('historial_ftmo_50k', [])
+    quemada = pnl <= -0.05 * ini or s['eq'] <= s['base'] - 0.10 * ini
+    agotada = s['eq'] <= s['base'] - (0.10 - AGOTADO) * ini
+    if quemada or agotada:
+        hist.append(dict(fase=s['fase'], inicio=s['inicio'], fin=str(fecha), resultado='quemada' if quemada else 'agotado', dias=s['dias']))
+        L.append(f"🪩 Sombra FTMO 50K (0.5×) fase {s['fase']} {'QUEMADA' if quemada else 'AGOTADA'} (equity {s['eq']:,.0f}): mañana empieza otro reto")
+        s50_fase_nueva(e, 1, s['eq'], fecha); return L
+    s['listo'] = gan >= obj
+    if s['listo'] and s['dias'] >= 4:
+        hist.append(dict(fase=s['fase'], inicio=s['inicio'], fin=str(fecha), resultado='aprobada', dias=s['dias']))
+        L.append(f"🪩 Sombra FTMO 50K (0.5×): FASE {s['fase']} APROBADA en {s['dias']} días (+${gan:,.0f})")
+        s50_fase_nueva(e, 2 if s['fase'] == 1 else 1, s['eq'], fecha); return L
+    piso = max(s['eq'] - 0.05 * ini, s['base'] - 0.10 * ini)
+    L.append(f"🪩 Sombra FTMO 50K (0.5×) fase {s['fase']} · día {s['dias']} · hoy {pnl:+,.0f} · lleva {gan:+,.0f} de +{obj:,.0f}"
+             f"{' (meta lograda)' if s['listo'] else ''}{' · tocó el freno' if freno else ''} · margen mañana ${s['eq'] - piso:,.0f}")
+    return L
+
+
+def backfill_ftmo_50k(e, hoy):
+    """Reconstruye (o completa) la sombra con los resúmenes de la bitácora desde SOMBRA_50K_DESDE hasta ayer. Sin duplicar fechas."""
+    try:
+        with _ARCHIVOS, open(BITACORA, newline='', encoding='utf-8') as fh:
+            filas = list(csv.DictReader(fh))
+    except Exception:
+        return []
+    dias = {}
+    for r in filas:
+        f = (r.get('hora_UTC') or '')[:10]
+        if r.get('evento') != 'resumen' or not (SOMBRA_50K_DESDE <= f < str(hoy)) or f in dias:
+            continue
+        t = r.get('detalle') or ''
+        m = re.search(r'Total del día: ([+-]?[\d,]+\.\d+) USD', t)
+        if not m:
+            continue
+        ops = re.findall(r'• [^|:]+: ([^|]+)', t)
+        dias[f] = (float(m.group(1).replace(',', '')), any('sin operaciones' not in o for o in ops), 'tocó el freno' in t)
+    L = []
+    for f in sorted(dias):
+        pnl100, opero, freno = dias[f]
+        L += s50_cerrar_dia(e, f, round(pnl100 * FTMO_50K_ESCALA, 2), opero, freno)
+    return L
+
+
+def s50_dia(e):
+    s, ini = e['ftmo_50k'], FTMO_50K_INICIAL
+    obj = s['base'] + (0.10 if s['fase'] == 1 else 0.05) * ini
+    return dict(eq_inicio=s['eq'], min_eq=s['eq'], fijo=None, quemado=False,
+                meta=25.0 if s['listo'] else max(obj - s['eq'] + 25.0, 50.0),
+                piso=max(s['eq'] - 0.05 * ini, s['base'] - 0.10 * ini), obj=obj)
+
+
+def s50_intradia(est, R):
+    """Congela la sombra si toca su freno o su meta del día. Nunca cambia est['dia']['cerrado'] ni manda órdenes."""
+    s50 = (est.get('dia') or {}).get('sombra_50k')
+    if not SOMBRA_50K or not s50 or s50.get('fijo') is not None:
+        return
+    r50 = round(R * FTMO_50K_ESCALA, 2); eq50 = s50['eq_inicio'] + r50
+    s50['min_eq'] = min(s50['min_eq'], eq50)
+    if eq50 <= s50['piso'] + FTMO_FRENO * FTMO_50K_INICIAL:
+        s50['fijo'], s50['quemado'] = r50, True
+        log('sombra50k', detalle=f'sombra 50K: freno (equity virtual {eq50:,.2f} · límite {s50["piso"]:,.2f}) → día fijo en {r50:+,.2f}')
+        guardar_estado(est)
+    elif r50 >= s50['meta']:
+        s50['fijo'] = r50
+        log('sombra50k', detalle=f'sombra 50K: meta del día +{s50["meta"]:,.0f} alcanzada → día fijo en {r50:+,.2f}')
+        guardar_estado(est)
+
+
+def s50_cierre(equity, hoy, opero):
+    """Cierre del día de la sombra en resumen(): usa lo congelado intradía o la mitad del resultado del día de 100K."""
+    if not SOMBRA_50K:
+        return []
+    try:
+        e = leer_estado(); d = e.get('dia') or {}
+        if 'ftmo_50k' not in e:
+            backfill_ftmo_50k(e, hoy)
+        s50 = d.get('sombra_50k') or {}
+        pnl = s50['fijo'] if s50.get('fijo') is not None else (equity - d.get('eq_inicio', equity)) * FTMO_50K_ESCALA
+        L = s50_cerrar_dia(e, hoy, pnl, opero, bool(s50.get('quemado')))
+        guardar_estado(e)
+        return L
+    except Exception as ex:
+        log('aviso', detalle=f'sombra 50K: no pude cerrar el día ({ex})')
+        return []
 
 
 def publicar(texto):
@@ -1399,17 +1537,15 @@ def main():
         f_ruido *= NFP_RUIDO
         log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g}')
     if MODO == 'ftmo' and (f_orb > TOPE_FTMO or f_ruido > TOPE_FTMO):   # FTMO revisa tamaños «mucho más grandes» que los habituales
-        log('tamaño', detalle=f'tope FTMO: máximo {TOPE_FTMO:g}× la base ({CONTRATOS} MNQ) por estrategia')
+        log('tamaño', detalle=f'tope FTMO: máximo {TOPE_FTMO:g}× la base ({CONTRATOS:g} MNQ) por estrategia')
         f_orb, f_ruido = min(f_orb, TOPE_FTMO), min(f_ruido, TOPE_FTMO)
-    n_mnq, n_ruido = round(CONTRATOS * f_orb), round(CONTRATOS * f_ruido)     # puede dar 0, igual que la simulación: ese día no opera esa estrategia
-    paso, lpm = info.volume_step or 0.01, lotes_por_mnq(info)
-    lotes, lotes_ruido = (round(round(lpm * n / paso) * paso, 8) for n in (n_mnq, n_ruido))
+    n_mnq, n_ruido, lotes, lotes_ruido = lotes_del_dia(info, f_orb, f_ruido)
     if info.volume_max and max(lotes, lotes_ruido) > info.volume_max:
         log('aviso', detalle=f'{max(lotes, lotes_ruido)} lotes pasa el máximo por orden del símbolo ({info.volume_max}); uso {info.volume_max}')
         lotes, lotes_ruido = min(lotes, float(info.volume_max)), min(lotes_ruido, float(info.volume_max))
     if v_hoy:
         log('tamaño', detalle=f'volatilidad 14 días {v_hoy:.2%} vs normal {v_med:.2%} → peso {peso:.2f} · '
-                              f'hoy: rango 30 min {n_mnq} MNQ ({lotes:g} lotes) · zona de ruido {n_ruido} MNQ ({lotes_ruido:g} lotes)')
+                              f'hoy: rango 30 min {n_mnq:g} MNQ ({lotes:g} lotes) · zona de ruido {n_ruido:g} MNQ ({lotes_ruido:g} lotes)')
     try:
         est = leer_estado(estricto=True)
     except EstadoDanado as e:
@@ -1439,9 +1575,15 @@ def main():
             if abs(ref - acc.equity) > 1:
                 log('aviso', detalle=f'balance a medianoche de Praga {ref:,.2f} ≠ equity al arrancar {acc.equity:,.2f}: el límite diario se mide desde el balance de medianoche')
             est['dia'] = ftmo_dia(est, acc.equity, hoy, ref)
-        if est['ftmo']['listo'] and ETAPA != 'fondeada':
-            n_mnq = 1
-            lotes = lotes_ruido = round(round(lotes_por_mnq(info) / (info.volume_step or 0.01)) * (info.volume_step or 0.01), 8)
+            if SOMBRA_50K:
+                try:
+                    backfill_ftmo_50k(est, hoy)                       # crea la sombra o completa días que falten (idempotente)
+                    est['dia']['sombra_50k'] = s50_dia(est)
+                except Exception as ex:
+                    log('aviso', detalle=f'sombra 50K: no pude iniciar el día ({ex})')
+        if est['ftmo']['listo'] and ETAPA != 'fondeada':                     # relleno hasta los 4 días: 1 MNQ en 100K (2 lotes), 0.5 MNQ en 50K
+            n_mnq = 1 if ESCALA_FTMO == 1.0 else ESCALA_FTMO
+            lotes = lotes_ruido = lotes_relleno(info)
         guardar_estado(est)
         dd = est['dia']
         meta_txt = f"FTMO {'fondeada · sin meta' if ETAPA == 'fondeada' else 'fase ' + str(est['ftmo']['fase']) + ' · meta del día +' + format(dd['meta'], ',.0f')} · freno en equity {dd['piso'] + FTMO_FRENO * FTMO_INICIAL:,.0f}"
@@ -1457,8 +1599,8 @@ def main():
     guardar_estado(est)
     if MODO != 'ftmo':
         meta_txt = ' · '.join(f"{v} {s['n']} MNQ meta +{s['meta']:,.0f}" for v, s in est['dia']['v'].items())
-    lotes_txt = (f'{lotes:g} lotes por estrategia (≈{n_mnq} MNQ)' if lotes == lotes_ruido
-                 else f'ORB {lotes:g} lotes (≈{n_mnq} MNQ) · ruido {lotes_ruido:g} lotes (≈{n_ruido} MNQ)')
+    lotes_txt = (f'{lotes:g} lotes por estrategia (≈{n_mnq:g} MNQ)' if lotes == lotes_ruido
+                 else f'ORB {lotes:g} lotes (≈{n_mnq:g} MNQ) · ruido {lotes_ruido:g} lotes (≈{n_ruido:g} MNQ)')
     tipo_cta = 'cuenta demo' if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else f'cuenta {CUENTA.upper()}'
     log('inicio', detalle=f'tramo de la {tramo} · {sym} · {lotes_txt} · equity {acc.equity:,.2f} · '
                           f'{meta_txt} · '
@@ -1512,6 +1654,10 @@ def main():
             if eq < d['min_eq']:
                 d['min_eq'] = eq
             R = eq - d['eq_inicio']
+            try:
+                s50_intradia(est, R)
+            except Exception as ex:
+                log_cada('s50', 'aviso', detalle=f'sombra 50K: {ex}', cada=600)
             if MODO == 'ftmo' and not d['cerrado']:
                 colchon = colchon_freno(sym)
                 if d.get('quemado') or eq <= d['piso'] + colchon:

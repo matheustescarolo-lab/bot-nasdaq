@@ -2,7 +2,7 @@
 import datetime as dt
 import json
 import sys
-import types
+import csv, types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -912,6 +912,86 @@ class TestBotLogica(unittest.TestCase):
         bot_nasdaq.ahora_ny = lambda: dt.datetime(2026, 11, 24, 11, 0)       # día normal, tick de hace un día: también se ignora
         bot_nasdaq.calcular_desfase('USTEC')
         self.assertEqual(bot_nasdaq.DESFASE, 7 * 3600)
+
+    # ===== Sombra FTMO 50K y soporte real 50K =====
+    def _resumen(self, fecha, total, orb='1 operación(es) · +1.00 USD', ruido='sin operaciones', extra=''):
+        nuevo = not Path(bot_nasdaq.BITACORA).exists()
+        with open(bot_nasdaq.BITACORA, 'a', newline='', encoding='utf-8') as fh:
+            w = csv.writer(fh)
+            if nuevo:
+                w.writerow(['hora_UTC', 'evento', 'estrategia', 'lado', 'lotes', 'precio', 'detalle'])
+            w.writerow([f'{fecha} 20:55:05', 'resumen', '', '', '', '',
+                        f'📊 Update del bot Nasdaq (reglas FTMO) — x | 💰 Cuenta: $1 | • Rango 30 min: {orb} | • Zona de ruido: {ruido} | '
+                        f'🧮 Total del día: {total:+,.2f} USD (base 6 MNQ por estrategia, ajustado por volatilidad){extra} | ✅ Sin errores'])
+
+    def test_backfill_ftmo_50k_desde_bitacora(self):
+        self._resumen('2026-11-18', -1464.32)                                   # antes del ensayo FTMO: no cuenta
+        self._resumen('2026-11-19', 5849.68)                                    # +2,924.84 · día 1
+        self._resumen('2026-11-19', 5849.68)                                    # fecha repetida: no se duplica
+        self._resumen('2026-11-20', 0.0, orb='sin operaciones')                 # sin operaciones: no suma día
+        self._resumen('2026-11-24', -1228.04)                                   # −614.02 · día 2
+        self._resumen('2026-11-25', 6000.0)                                     # +3,000 → +5,310.82 ≥ 5,000 (meta lograda) · día 3
+        self._resumen('2026-11-26', -1000.0)                                    # −500 → +4,810.82: cae bajo la meta · día 4
+        self._resumen('2026-11-27', 600.0)                                      # +300 → +5,110.82 con 5 días → fase 1 aprobada
+        self._resumen('2026-11-30', 100.0)                                      # hoy: todavía no cerró, no entra
+        e = {}
+        L = bot_nasdaq.backfill_ftmo_50k(e, dt.date(2026, 11, 30))
+        s = e['ftmo_50k']
+        self.assertEqual((s['fase'], s['dias'], s['base'], s['ultimo']), (2, 0, 55110.82, '2026-11-27'))
+        self.assertEqual(e['historial_ftmo_50k'][-1], dict(fase=1, inicio='2026-11-19', fin='2026-11-27', resultado='aprobada', dias=5))
+        self.assertTrue(any('lleva +5,311' in x and 'meta lograda' in x for x in L))       # el 25 llegó a la meta antes de los 4 días
+        self.assertTrue(any('lleva +4,811' in x and 'meta lograda' not in x for x in L))   # el 26 cayó debajo: listo se recalcula
+        self.assertEqual(sum('Sombra' in x for x in L), 6)
+
+    def test_sombra_50k_idempotente(self):
+        e = {}
+        a = bot_nasdaq.s50_cerrar_dia(e, '2026-11-19', 2924.84, True)
+        b = bot_nasdaq.s50_cerrar_dia(e, '2026-11-19', 2924.84, True)
+        self.assertTrue(a); self.assertEqual(b, [])
+        self.assertEqual((e['ftmo_50k']['eq'], e['ftmo_50k']['dias']), (52924.84, 1))
+        self._resumen('2026-11-19', 5849.68)
+        bot_nasdaq.backfill_ftmo_50k(e, dt.date(2026, 11, 20))                  # el backfill tampoco lo duplica
+        self.assertEqual((e['ftmo_50k']['eq'], e['ftmo_50k']['dias']), (52924.84, 1))
+
+    def test_sombra_50k_intradia_no_toca_100k(self):
+        orig = bot_nasdaq.SOMBRA_50K; bot_nasdaq.SOMBRA_50K = True; self.addCleanup(setattr, bot_nasdaq, 'SOMBRA_50K', orig)   # = Tickmill + FTMO
+        enviadas = []
+        bot_nasdaq.mt5.order_send = MagicMock(side_effect=lambda r: enviadas.append(r))
+        for R, quemado in ((10100.0, False), (-4700.0, True)):                  # meta: +5,050 ≥ +5,025 / freno: −2,350 ≤ −2,500 + 200
+            e = {}; bot_nasdaq.s50_fase_nueva(e, 1, 50000.0, '2026-11-25')
+            est = {'ftmo_50k': e['ftmo_50k'], 'dia': {'cerrado': False, 'eq_inicio': 100000.0, 'meta': 10000.0}}
+            est['dia']['sombra_50k'] = bot_nasdaq.s50_dia(est)
+            bot_nasdaq.s50_intradia(est, R)
+            s50 = est['dia']['sombra_50k']
+            self.assertEqual((s50['fijo'], s50['quemado']), (round(R / 2, 2), quemado))
+            self.assertFalse(est['dia']['cerrado']); self.assertNotIn('quemado', est['dia']); self.assertNotIn('meta_ok', est['dia'])
+            bot_nasdaq.s50_intradia(est, R * 3)                                 # ya congelado: no cambia
+            self.assertEqual(s50['fijo'], round(R / 2, 2))
+        self.assertEqual(enviadas, [])                                          # nunca manda ni cierra órdenes
+
+    def test_soporte_real_50k_y_no_regresion_100k(self):
+        orig = (bot_nasdaq.FTMO_INICIAL, bot_nasdaq.ESCALA_FTMO, bot_nasdaq.CONTRATOS, bot_nasdaq.ETAPA)
+        self.addCleanup(lambda: setattr(bot_nasdaq, 'FTMO_INICIAL', orig[0]) or setattr(bot_nasdaq, 'ESCALA_FTMO', orig[1])
+                        or setattr(bot_nasdaq, 'CONTRATOS', orig[2]) or setattr(bot_nasdaq, 'ETAPA', orig[3]))
+        bot_nasdaq.ETAPA = 'reto'; info = self._info()                           # USTEC: 2 lotes = 1 MNQ
+        def metas(ini, listo):
+            bot_nasdaq.FTMO_INICIAL, bot_nasdaq.ESCALA_FTMO = ini, ini / 100000.0
+            e = {'ftmo': dict(fase=1, inicio='2026-11-19', base=ini, cierre_prev=ini, dias=2, listo=listo)}
+            return bot_nasdaq.ftmo_dia(e, ini + 0.0999 * ini, dt.date(2026, 11, 25))['meta']
+        # 100K: exactamente como antes ($50 lograda / mínimo $100; lotes enteros por MNQ; relleno 2 lotes)
+        bot_nasdaq.CONTRATOS = 6.0
+        self.assertEqual((metas(100000.0, True), metas(100000.0, False)), (50.0, 100.0))
+        viejo = lambda f: round(round(2 * round(6 * f) / 0.01) * 0.01, 8)            # fórmula de antes del cambio
+        for f in (0.0, 0.26, 0.51, 0.75, 1.0, 1.24, 1.5, 2.0):
+            n_o, n_r, lo, lr = bot_nasdaq.lotes_del_dia(info, f, f)
+            self.assertEqual((n_o, lo), (round(6 * f), viejo(f)), f); self.assertIsInstance(n_o, int)
+        self.assertEqual(bot_nasdaq.lotes_relleno(info), 2.0)
+        # 50K: $25 / $50, 3 MNQ × capas en lotes directos, relleno 1 lote (0.5 MNQ)
+        bot_nasdaq.CONTRATOS = 3.0
+        self.assertEqual((metas(50000.0, True), metas(50000.0, False)), (25.0, 50.0))
+        self.assertEqual(bot_nasdaq.lotes_del_dia(info, 0.51, 0.0)[2:], (3.06, 0.0))
+        self.assertEqual(bot_nasdaq.lotes_del_dia(info, 1.0, 2.0)[2:], (6.0, 12.0))   # = la mitad de 100K (12 y 24 lotes)
+        self.assertEqual(bot_nasdaq.lotes_relleno(info), 1.0)
 
 
 if __name__ == '__main__':
