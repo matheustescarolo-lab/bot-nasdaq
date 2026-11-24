@@ -1,6 +1,8 @@
-# HANDOFF para Neon — Correcciones de AUDIT_010 (Bloque 5)
+# HANDOFF para Neon — AUDIT_011: correcciones de AUDIT_010 + cuenta agotada al 2% (Bloque 5)
 
-Audita el commit 1fbeb1b (rama audit-010, ya en main) contra 9043315. Son las correcciones de tu AUDIT_010 (RECHAZADO). Claude verificó cada hallazgo contra el código, corrigió los reales y agregó 10 pruebas que fallan con el código anterior y pasan con el nuevo (61 en total, también aisladas). Reglas de las estrategias: sin cambios.
+Audita `git diff 9043315..06d938d -- '*.py' .github/` (ya en main). Son dos cambios:
+1. **Commit 1fbeb1b:** correcciones de tu AUDIT_010.
+2. **Commit 06d938d:** cuenta agotada al 2% (aprobado por Matheus), explicado al final. Son las correcciones de tu AUDIT_010 (RECHAZADO). Claude verificó cada hallazgo contra el código, corrigió los reales y agregó 10 pruebas que fallan con el código anterior y pasan con el nuevo (61 en total, también aisladas). Reglas de las estrategias: sin cambios.
 
 ## Qué se hizo con cada hallazgo
 | # | Veredicto de Claude | Cambio |
@@ -33,3 +35,24 @@ Medido en 8 años (`investigacion/scripts/c1e.py`, modelo de `c1b.py` con el top
 4. Que `cargar_salidas_prot` no bloquee entradas de días anteriores ni de la otra estrategia.
 
 Cuenta FTMO Swing (sin restricción de noticias); 6 MNQ en el reto y 4 en la fondeada; tope 2× por estrategia; ORB con órdenes stop; reglas de las estrategias congeladas; stop de seguridad $4,500 / ruido 1%.
+
+## Cambio 2 (06d938d): cuenta agotada al 2%
+- **Antes:** `ftmo_cierre` daba la cuenta por agotada con equity ≤ base − (10% − 2×0.4%) = base − 9.2%, o sea con menos de $800 antes de la pérdida máxima.
+- **Ahora:** `AGOTADO = 0.02`, equity ≤ base − 8%. En `reto` arranca un reto nuevo; en `fase1`/`fase2`/`fondeada` deja de operar la cuenta.
+- **Por qué** (8 años, `investigacion/scripts/freno_v3.py`; 2-Step, 4 retos, 12 meses, freno actual; bot como en pruebas / bot a la mitad):
+
+| Umbral de agotado | No cobra | Mediana 12 m |
+|---|---|---|
+| 0.8% (antes) | 14% / 26% | $24.8k / $12.3k |
+| **2% (ahora)** | **14% / 25%** | **$25.1k / $15.2k** |
+
+  Mejora en las dos mitades de años. Una cuenta con menos de 2% casi nunca aprueba y bloquea comprar un reto nuevo con todo el espacio.
+- Ese mismo estudio corrigió dos errores del modelo de freno de V2:
+  - Cuando el espacio era menor que el colchón, el freno «cerraba» con ganancia (en la realidad, ese día no se opera).
+  - Faltaba la regla de agotado.
+  Con el modelo corregido, quitar el freno no conviene: se mantiene.
+- Pruebas: `test_agotado_al_2_por_ciento` y `test_reto_agotado_al_2_por_ciento_arranca_uno_nuevo` (fallan con el código anterior). 63 pruebas en total.
+
+## Qué revisar también en el cambio 2
+5. Que ningún otro lugar siga usando el umbral viejo (0.10 − 2×FTMO_FRENO).
+6. Que el mensaje y `historial_ftmo` sigan bien en las cuatro etapas.
