@@ -45,8 +45,8 @@
   "fase": 1,
   "inicio": "2026-11-19",
   "base": 48491.1,
-  "cierre_prev": 54340.78,
-  "dias": 1,
+  "cierre_prev": 53112.74,
+  "dias": 2,
   "listo": false,
   "login": "d4b0cc700447",
   "etapa": "reto"
@@ -62,6 +62,7 @@
   "obj": 58491.1,
   "salidas_srv": [
    319422991
-  ]
+  ],
+  "resumido": "2026-11-24"
  }
 }
