@@ -64,5 +64,16 @@
    319422991
   ],
   "resumido": "2026-11-24"
- }
+ },
+ "ftmo_50k": {
+  "fase": 1,
+  "inicio": "2026-11-19",
+  "base": 50000.0,
+  "eq": 52310.82,
+  "cierre_prev": 52310.82,
+  "dias": 2,
+  "listo": false,
+  "ultimo": "2026-11-24"
+ },
+ "historial_ftmo_50k": []
 }
