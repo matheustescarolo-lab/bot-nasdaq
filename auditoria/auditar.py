@@ -22,6 +22,10 @@ def git(*a):
     return subprocess.run(['git', *a], check=True, capture_output=True, text=True).stdout
 
 
+class SinCuota(Exception):
+    pass
+
+
 def pedir(url, cuerpo=None, intentos=4):
     for k in range(intentos):
         try:
@@ -31,6 +35,8 @@ def pedir(url, cuerpo=None, intentos=4):
                 return json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             detalle = e.read().decode(errors='replace')[:500]
+            if e.code == 429 and 'quota' in detalle.lower() and 'exceeded your current quota' in detalle.lower():
+                raise SinCuota(detalle)                    # el plan no incluye este modelo (o se acabó la cuota del día): no sirve reintentar
             if e.code in (429, 500, 503) and k < intentos - 1:
                 print(f'Gemini respondió {e.code}; reintento en {30 * (k + 1)} s', flush=True)
                 time.sleep(30 * (k + 1)); continue
@@ -41,16 +47,20 @@ def version(nombre):
     return tuple(int(x) for x in re.findall(r'\d+', nombre.split('/')[-1])[:3]) or (0,)
 
 
-def elegir_modelo(llave):
+def modelos(llave):
+    """Candidatos en orden: GEMINI_MODEL si está; si no, el «pro» más nuevo y, como respaldo (plan gratuito), el «flash» más nuevo."""
     pedido = os.environ.get('GEMINI_MODEL', '').strip()
     if pedido:
-        return pedido if pedido.startswith('models/') else 'models/' + pedido
+        return [pedido if pedido.startswith('models/') else 'models/' + pedido]
     ms = pedir(f'{API}/models?pageSize=1000&key={llave}').get('models', [])
-    ok = [m['name'] for m in ms if 'generateContent' in m.get('supportedGenerationMethods', [])
-          and 'pro' in m['name'] and not re.search(r'tts|image|vision|embedding|audio|live', m['name'])]
-    if not ok:
-        raise SystemExit('No encontré un modelo Gemini «pro» con generateContent; define la variable GEMINI_MODEL.')
-    return max(ok, key=lambda n: (version(n), 'preview' not in n, 'exp' not in n))
+    nombres = [m['name'] for m in ms if 'generateContent' in m.get('supportedGenerationMethods', [])
+               and not re.search(r'tts|image|vision|embedding|audio|live|lite|nano|gemma', m['name'])]
+    orden = lambda n: (version(n), 'preview' not in n, 'exp' not in n)
+    pro = sorted([n for n in nombres if 'pro' in n], key=orden, reverse=True)[:2]
+    flash = sorted([n for n in nombres if 'flash' in n], key=orden, reverse=True)[:2]
+    if not pro + flash:
+        raise SystemExit('No encontré un modelo Gemini con generateContent; define la variable GEMINI_MODEL.')
+    return pro + flash
 
 
 def leer(ruta):
@@ -92,10 +102,17 @@ def main():
     print(f'Rama {rama} · commit {commit} · {len(archivos)} archivos · {len(prompt):,} caracteres → {salida}', flush=True)
     if seco:
         print(prompt[:3000]); return 0
-    modelo = elegir_modelo(llave)
-    print(f'Modelo: {modelo}', flush=True)
-    r = pedir(f'{API}/{modelo}:generateContent?key={llave}',
-              {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}], 'generationConfig': {'temperature': 0.2}})
+    r = modelo = None
+    for modelo in modelos(llave):
+        print(f'Modelo: {modelo}', flush=True)
+        try:
+            r = pedir(f'{API}/{modelo}:generateContent?key={llave}',
+                      {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}], 'generationConfig': {'temperature': 0.2}})
+            break
+        except SinCuota:
+            print(f'::warning::Sin cuota para {modelo} en este plan de Gemini: pruebo el siguiente', flush=True)
+    if r is None:
+        raise SystemExit('Ningún modelo de Gemini tiene cuota en este plan (activar facturación o definir GEMINI_MODEL).')
     try:
         texto = ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts']).strip()
     except (KeyError, IndexError):
