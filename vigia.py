@@ -32,11 +32,14 @@ def decidir(ahora, corridas, feriados, medios):
         return False, 'fuera del horario de bolsa'
     if any(c['status'] != 'completed' for c in corridas):
         return False, 'ya hay una corrida activa o en espera'
-    de_hoy = [c for c in corridas if dt.datetime.fromisoformat(c['created_at'].replace('Z', '+00:00')).astimezone(NY).date() == ahora.date()]
+    de_hoy = [c for c in corridas if dt.datetime.fromisoformat(c['created_at'].replace('Z', '+00:00')).astimezone(NY).date() == ahora.date()
+              and 'prueba' not in (c.get('display_title') or '').lower()]          # una prueba no dice nada del bot de hoy (AUDIT_010 A4)
     if sum('vigia' in (c.get('display_title') or '').lower() for c in de_hoy) >= MAX_RELANZAMIENTOS:
         return False, f'ya relancé {MAX_RELANZAMIENTOS} veces hoy: no insisto (revisar a mano)'
     if de_hoy:
         u = max(de_hoy, key=lambda c: c['created_at'])
+        if u.get('conclusion') == 'cancelled':
+            return False, 'la última corrida fue cancelada (paro manual): no relanzo'
         dur = (dt.datetime.fromisoformat(u['updated_at'].replace('Z', '+00:00'))
                - dt.datetime.fromisoformat(u['created_at'].replace('Z', '+00:00'))).total_seconds()
         if u.get('conclusion') == 'success' and dur < 240 and 'vigia' not in (u.get('display_title') or '').lower():
