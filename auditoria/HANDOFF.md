@@ -1,58 +1,37 @@
-# HANDOFF para Neon — AUDIT_011: correcciones de AUDIT_010 + cuenta agotada al 2% (Bloque 5)
+# HANDOFF para Neon — AUDIT_012: correcciones de AUDIT_011
 
-Audita `git diff 9043315..06d938d -- '*.py' .github/` (ya en main). Son dos cambios:
-1. **Commit 1fbeb1b:** correcciones de tu AUDIT_010.
-2. **Commit 06d938d:** cuenta agotada al 2% (aprobado por Matheus), explicado al final. Son las correcciones de tu AUDIT_010 (RECHAZADO). Claude verificó cada hallazgo contra el código, corrigió los reales y agregó 10 pruebas que fallan con el código anterior y pasan con el nuevo (61 en total, también aisladas). Reglas de las estrategias: sin cambios.
+Audita `git diff 06d938d..5139f00 -- '*.py' .github/` (rama audit-011, ya en main). Son las correcciones de tu AUDIT_011 (APROBADO CON CAMBIOS). Claude verificó los 3 hallazgos: los 3 son reales. 64 pruebas; todas pasan también corridas una por una, y las nuevas fallan con el código anterior. Reglas de las estrategias: sin cambios.
 
-## Qué se hizo con cada hallazgo
+## Qué se hizo
 | # | Veredicto de Claude | Cambio |
 |---|---|---|
-| A1 CRÍTICO | Real (las dos cosas) | `riesgo_despues()` + `_reserva()`: la posición que entró antes deja reservado para la que entra después (o para la orden pendiente de mayor riesgo de la otra estrategia) lo que esta arriesga, máx. `TOPE_MIN_USD` ($500). En `asegurar_tope` (posiciones) y en `tope_stop` (al entrar). Así riesgo_1 + riesgo_2 ≤ margen antes del freno (que ya descuenta el colchón), también con pérdidas realizadas. `tope_stop` reparte con `margen_ftmo(..., solo_realizado=True)` y conserva el bloqueo de entrada con min(balance, equity). |
-| A2 ALTO | Real | `partir_dias`: si la primera vela de hoy es posterior a 9:35, no se pasa por `_en_rejilla` (la guardia de `sincronizar` aborta). `velas()`: quita índices duplicados. |
-| A3 ALTO | Real | `_ARCHIVOS = threading.Lock()` en `_subir_archivo` (lectura), `guardar_estado` (escritura + `os.replace`) y `log` (escritura). `_hilo_subida`: si `_subir_archivo` devuelve False, `pend = True`. |
-| A4 ALTO | 1) y 3) reales; 2) no con datos | 1) `run-name` = «Bot Nasdaq (prueba)» con `prueba=true`; `vigia.decidir` las excluye de `de_hoy`. 3) Última corrida `cancelled` → no relanza (el runner caído del 23-nov terminó en `failure`, no en `cancelled`). 2) Las 14 pruebas recientes duraron 167–195 s (< 240 s); un día sin operar real dura ~3 h (el bot espera hasta el cierre). Con 1) las pruebas ya no cuentan. Se deja 240 s. |
-| A5 MEDIO | Real | `cargar_salidas_prot(hoy)` al arrancar: reconstruye `_SALIDA_PROT` desde la bitácora (filas `salida` con motivo «stop de seguridad:» o «el precio ya está en el piso asegurado»). Solo se marca si `cerrar()` devolvió True. Se eligió la bitácora y no el estado para no pisar el `est` que `main` tiene en memoria. |
-| A6 MEDIO | Real | `sacudida`: si hay sacudida, marca la vela solo si `cerrar()` confirmó; si no, `return` y la misma vela reintenta en el próximo ciclo. |
-| A7 MEDIO | Real (solo Lucid) | `f=(n_v / n_mnq) if n_mnq else 0.0`. |
-| A8 MEDIO | Real | `calcular_desfase`: excluye `FERIADOS` y descarta `srv_menos_utc` si se aleja más de 3 h de NY+7 h (deja +7 h y avisa). |
-| A9 BAJO | Real en pruebas | Login ficticio 12345678. `estado_nasdaq.json` se migra solo al hash en la próxima corrida (`main`, líneas «estado viejo con el login a la vista»). El login seguirá en el historial de git (es una demo; el password nunca estuvo en el repo). |
-| A10 BAJO | Real | Prueba aislada (tick simulado). El guardado hace `git clean -fdq contexto/` antes del pull. `fail-fast: false` con dos piernas: hoy FTMO se salta por la guardia de IP; se revisará al montar el servidor en México. |
+| A1 MEDIO | Real | `lotes_pendientes_otras(sym, excluir)`. La reserva frente a la pendiente de la otra estrategia usa el margen con el colchón de cuando se llene. En `asegurar_tope`: `margen_ftmo(sym, lp, solo_realizado=True)`. En `tope_stop`: `margen_ftmo(sym, lotes + lp, solo_realizado=True)`. Con 24 + 24 lotes, ruido $3,060 + pendiente $500 = $3,560 = margen proyectado (antes $4,280). También `riesgo_abierto(sym, excluir=clave)` en `tope_stop` (tu nota). Prueba: `test_a1_pendiente_con_el_colchon_de_cuando_se_llene`. |
+| A2 BAJO | Real (las 4 fallaban solas) | `setUp` deja `positions_get`, `orders_get` y `history_deals_get` en `[]`. Se corrieron las 64 pruebas una por una: todas pasan. |
+| A3 BAJO | Real | `opero` se evalúa antes del agotado. `historial_ftmo` guarda `etapa` y `dias + (1 if opero else 0)`. Los textos dicen «Cuenta FTMO fondeada» o «cuenta fondeada» en esa etapa e incluyen el umbral. |
 
-## Respuesta a tu pregunta (A1)
-Medido en 8 años (`investigacion/scripts/c1e.py`, modelo de `c1b.py` con el tope aplicado a todas las operaciones; resultado base 6 MNQ):
+## Tu pregunta 1 (agotado en la fondeada)
+- Tenías razón en la lógica: en la fondeada no hay meta y toda ganancia se cobra.
+- Ahora: `AGOTADO = 0.02` (reto/fase1/fase2) y `AGOTADO_FONDEADA = 0.008`.
+- Se midió con `investigacion/scripts/freno_v4.py`, que además corrige tus dos notas sobre el simulador:
+  - Solo cuentan días con operaciones.
+  - Si el deslizamiento del freno llega al límite, es quema.
+- Y modela lo que hace el bot al lograr la meta antes de los 4 días: sigue con 1 MNQ y meta de $50.
 
-| Variante | Efecto | Peor riesgo con el bot caído |
+| Agotado | No cobra (pruebas / mitad) | Mediana 12 m |
 |---|---|---|
-| C1 anterior (piso $500, la primera no cede) | −1.7% | $5,000 (= límite diario) |
-| **Elegida: la primera cede la reserva (también ante la pendiente)** | **−1.3%** | **$4,600 (margen − colchón)** |
-| Bloquear la 2.ª si no cabe (C1 estricto) | −7.3% | $4,600 |
-| Bajar el tope a $4,000 para todas | −4.4% | $4,600 |
+| 0.8% en todo (antes) | 14% / 26% | $24.6k / $12.3k |
+| 2% en todo | 14% / 25% | $24.9k / $14.3k |
+| **2% en reto y fases, 0.8% en la fondeada (ahora)** | **14% / 25%** | **$25.0k / $14.3k** |
+
+Mejora en las dos mitades de años.
+
+## Tu pregunta 2 (vigía + workflow_run)
+- No se verificó en GitHub si una corrida lanzada por el vigía con `github.token` dispara otra vez `workflow_run` al terminar.
+- En el peor caso, una segunda caída queda cubierta por el `schedule` cada 15 min: hasta 15 min sin bot.
+- Se acepta; se revisará al montar el runner propio en México (enero).
+- `c1e.py` (M0 fijo, sin pérdidas realizadas intradía): de acuerdo, es una cota del día limpio. La garantía en el bot la dan `_reserva` + el margen realizado, cubiertos por pruebas.
 
 ## Qué revisar
-1. Que `_reserva` nunca deje riesgo_1 + riesgo_2 > margen antes del freno (posición+posición y posición+pendiente), incluido el orden de procesamiento en `asegurar_tope` (converge en ≤ 1 ciclo de 2 s).
-2. Que `tope_stop(..., clave=...)` no reserve contra las pendientes de su propia estrategia.
-3. Que el candado no pueda bloquear (no se toma dentro de otro tramo con el candado; `marcar_subida` queda fuera).
-4. Que `cargar_salidas_prot` no bloquee entradas de días anteriores ni de la otra estrategia.
-
-Cuenta FTMO Swing (sin restricción de noticias); 6 MNQ en el reto y 4 en la fondeada; tope 2× por estrategia; ORB con órdenes stop; reglas de las estrategias congeladas; stop de seguridad $4,500 / ruido 1%.
-
-## Cambio 2 (06d938d): cuenta agotada al 2%
-- **Antes:** `ftmo_cierre` daba la cuenta por agotada con equity ≤ base − (10% − 2×0.4%) = base − 9.2%, o sea con menos de $800 antes de la pérdida máxima.
-- **Ahora:** `AGOTADO = 0.02`, equity ≤ base − 8%. En `reto` arranca un reto nuevo; en `fase1`/`fase2`/`fondeada` deja de operar la cuenta.
-- **Por qué** (8 años, `investigacion/scripts/freno_v3.py`; 2-Step, 4 retos, 12 meses, freno actual; bot como en pruebas / bot a la mitad):
-
-| Umbral de agotado | No cobra | Mediana 12 m |
-|---|---|---|
-| 0.8% (antes) | 14% / 26% | $24.8k / $12.3k |
-| **2% (ahora)** | **14% / 25%** | **$25.1k / $15.2k** |
-
-  Mejora en las dos mitades de años. Una cuenta con menos de 2% casi nunca aprueba y bloquea comprar un reto nuevo con todo el espacio.
-- Ese mismo estudio corrigió dos errores del modelo de freno de V2:
-  - Cuando el espacio era menor que el colchón, el freno «cerraba» con ganancia (en la realidad, ese día no se opera).
-  - Faltaba la regla de agotado.
-  Con el modelo corregido, quitar el freno no conviene: se mantiene.
-- Pruebas: `test_agotado_al_2_por_ciento` y `test_reto_agotado_al_2_por_ciento_arranca_uno_nuevo` (fallan con el código anterior). 63 pruebas en total.
-
-## Qué revisar también en el cambio 2
-5. Que ningún otro lugar siga usando el umbral viejo (0.10 − 2×FTMO_FRENO).
-6. Que el mensaje y `historial_ftmo` sigan bien en las cuatro etapas.
+1. Que con A1 la suma posición + pendiente nunca pase del margen proyectado, en los dos órdenes de entrada.
+2. Que `lotes_pendientes_otras` no cuente las pendientes de la propia estrategia (el par OCO del ORB).
+3. Que `setUp` no esconda un error real de alguna prueba que antes dependía del estado de otra.
