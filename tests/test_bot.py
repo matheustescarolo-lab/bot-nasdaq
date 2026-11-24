@@ -993,6 +993,18 @@ class TestBotLogica(unittest.TestCase):
         self.assertEqual(bot_nasdaq.lotes_del_dia(info, 1.0, 2.0)[2:], (6.0, 12.0))   # = la mitad de 100K (12 y 24 lotes)
         self.assertEqual(bot_nasdaq.lotes_relleno(info), 1.0)
 
+    def test_audit012_relleno_minimo_sombra_sin_historial_y_colchon(self):
+        orig = (bot_nasdaq.ESCALA_FTMO, bot_nasdaq.SOMBRA_50K)
+        self.addCleanup(lambda: setattr(bot_nasdaq, 'ESCALA_FTMO', orig[0]) or setattr(bot_nasdaq, 'SOMBRA_50K', orig[1]))
+        bot_nasdaq.ESCALA_FTMO = 0.5                                      # A1: símbolo de $20/pt/lote con mínimo 0.1 → 0.1 (antes 0.0)
+        self.assertEqual(bot_nasdaq.lotes_relleno(self._info(trade_tick_value=0.2, volume_step=0.1, volume_min=0.1)), 0.1)
+        e = {}; d = bot_nasdaq.s50_dia(e, dt.date(2026, 11, 25))         # A2: sin ftmo_50k ni bitácora → arranca la sombra
+        self.assertEqual((e['ftmo_50k']['eq'], d['eq_inicio']), (50000.0, 50000.0))
+        bot_nasdaq.SOMBRA_50K = True                                      # A3: con colchón de 100K $720 → 50K $360: frena en −$2,140
+        est = {'ftmo_50k': e['ftmo_50k'], 'dia': {'cerrado': False, 'sombra_50k': d}}
+        bot_nasdaq.s50_intradia(est, -4280.0, colchon=360.0)
+        self.assertEqual((d['fijo'], d['quemado']), (-2140.0, True))
+
 
 if __name__ == '__main__':
     unittest.main()
