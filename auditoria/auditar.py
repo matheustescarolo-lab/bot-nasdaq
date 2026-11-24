@@ -43,6 +43,40 @@ def pedir(url, cuerpo=None, intentos=4):
             raise SystemExit(f'Error de la API de Gemini {e.code}: {detalle}')
 
 
+def generar(llave, modelo, prompt):
+    """Pide la auditoría en modo streaming (SSE): la conexión no se queda muda 10+ min esperando la respuesta completa."""
+    cuerpo = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}], 'generationConfig': {'temperature': 0.2}}
+    for k in range(3):
+        req = urllib.request.Request(f'{API}/{modelo}:streamGenerateContent?alt=sse&key={llave}',
+                                     data=json.dumps(cuerpo).encode(), headers={'Content-Type': 'application/json'})
+        texto, t0, aviso = [], time.time(), 0
+        try:
+            with urllib.request.urlopen(req, timeout=900) as r:
+                for linea in r:
+                    linea = linea.decode('utf-8', errors='replace').strip()
+                    if not linea.startswith('data:'):
+                        continue
+                    d = json.loads(linea[5:])
+                    for parte in (d.get('candidates') or [{}])[0].get('content', {}).get('parts', []):
+                        if not parte.get('thought'):
+                            texto.append(parte.get('text', ''))
+                    n = sum(map(len, texto))
+                    if n - aviso >= 4000:
+                        aviso = n; print(f'  … {n:,} caracteres recibidos ({time.time() - t0:.0f} s)', flush=True)
+            return ''.join(texto).strip()
+        except urllib.error.HTTPError as e:
+            detalle = e.read().decode(errors='replace')[:500]
+            if e.code == 429 and 'exceeded your current quota' in detalle.lower():
+                raise SinCuota(detalle)
+            if e.code in (429, 500, 503) and k < 2:
+                print(f'Gemini respondió {e.code}; reintento en {60 * (k + 1)} s', flush=True)
+                time.sleep(60 * (k + 1)); continue
+            raise SystemExit(f'Error de la API de Gemini {e.code}: {detalle}')
+        except (TimeoutError, OSError) as e:
+            print(f'::warning::{modelo} no respondió ({e}); {"reintento" if k < 2 else "paso al siguiente"}', flush=True)
+    raise SinCuota('sin respuesta')
+
+
 def version(nombre):
     return tuple(int(x) for x in re.findall(r'\d+', nombre.split('/')[-1])[:3]) or (0,)
 
@@ -102,21 +136,18 @@ def main():
     print(f'Rama {rama} · commit {commit} · {len(archivos)} archivos · {len(prompt):,} caracteres → {salida}', flush=True)
     if seco:
         print(prompt[:3000]); return 0
-    r = modelo = None
+    texto = modelo = None
     for modelo in modelos(llave):
         print(f'Modelo: {modelo}', flush=True)
         try:
-            r = pedir(f'{API}/{modelo}:generateContent?key={llave}',
-                      {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}], 'generationConfig': {'temperature': 0.2}})
-            break
+            texto = generar(llave, modelo, prompt)
+            if texto:
+                break
+            print(f'::warning::{modelo} devolvió una respuesta vacía', flush=True)
         except SinCuota:
-            print(f'::warning::Sin cuota para {modelo} en este plan de Gemini: pruebo el siguiente', flush=True)
-    if r is None:
-        raise SystemExit('Ningún modelo de Gemini tiene cuota en este plan (activar facturación o definir GEMINI_MODEL).')
-    try:
-        texto = ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts']).strip()
-    except (KeyError, IndexError):
-        raise SystemExit(f'Gemini no devolvió texto: {json.dumps(r)[:800]}')
+            print(f'::warning::Sin cuota (o sin respuesta) de {modelo}: pruebo el siguiente', flush=True)
+    if not texto:
+        raise SystemExit('Ningún modelo de Gemini respondió con este plan (activar facturación o definir GEMINI_MODEL).')
     texto = re.sub(r'^```(?:markdown)?\s*|\s*```$', '', texto)
     m = re.search(r'\*\*Veredicto:\*\*\s*(APROBADO CON CAMBIOS|APROBADO|RECHAZADO)', texto)
     veredicto = m.group(1) if m else 'SIN VEREDICTO'
