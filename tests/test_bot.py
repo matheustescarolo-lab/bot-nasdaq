@@ -1022,6 +1022,46 @@ class TestBotLogica(unittest.TestCase):
         self.assertFalse(vigia.vm_apagada(dt.datetime(2026, 11, 25, 10, 5, tzinfo=vigia.NY), [corriendo], set(), set()))
         self.assertFalse(vigia.vm_apagada(dt.datetime(2026, 11, 26, 10, 5, tzinfo=vigia.NY), [hoy], {'2026-11-26'}, set()))
 
+    def test_audit014_estado_ftmo_sin_login_se_reinicia(self):
+        # A1: el estado de la prueba gratis (login null) no se hereda en la cuenta pagada; sí se conserva el de la misma cuenta y etapa
+        viejo = {'fase': 1, 'dias': 1, 'cierre_prev': 97817.5, 'login': None, 'etapa': 'reto'}
+        self.assertFalse(bot_nasdaq.ftmo_estado_es_de(viejo, 12345, 'fase1'))
+        self.assertFalse(bot_nasdaq.ftmo_estado_es_de(viejo, 12345, 'reto'))
+        self.assertFalse(bot_nasdaq.ftmo_estado_es_de({}, 12345, 'reto'))
+        mio = dict(viejo, login=bot_nasdaq.id_cuenta(12345), etapa='fase1')
+        self.assertTrue(bot_nasdaq.ftmo_estado_es_de(mio, 12345, 'fase1'))
+        self.assertFalse(bot_nasdaq.ftmo_estado_es_de(mio, 12345, 'fase2'))      # cambio de etapa → reinicio
+        self.assertFalse(bot_nasdaq.ftmo_estado_es_de(mio, 67890, 'fase1'))      # otra cuenta → reinicio
+
+    def test_audit014_vigia_canceladas_no_cuentan_y_vm_prendida(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import vigia
+        c = lambda i, st, ini: dict(id=i, status=st, conclusion=None, created_at=ini, updated_at=ini, display_title='Bot FTMO')
+        diez = dt.datetime(2026, 11, 25, 10, 5, tzinfo=vigia.NY)
+        # A6 (2): mañana en curso + tarde en cola por concurrencia hace 20 min → la VM está prendida, no hay aviso
+        self.assertFalse(vigia.vm_apagada(diez, [c(1, 'in_progress', '2026-11-25T14:30:00Z'), c(2, 'queued', '2026-11-25T14:45:00Z')], set(), set()))
+        # A6 (1): la corrida de ayer en cola se cancela y ya no provoca un falso «VM apagada» ni impide relanzar la de hoy
+        llamadas = []
+        ayer = c(7, 'queued', '2026-11-24T21:00:00Z')
+        orig = vigia.gh, vigia.avisar_issue
+        def gh(*a):
+            llamadas.append(a)
+            return json.dumps({'workflow_runs': [ayer]}) if a[0] == 'api' else ''
+        vigia.gh, vigia.avisar_issue = gh, lambda *a: llamadas.append(('aviso',))
+        try:
+            vigia.vigilar_ftmo(diez, set(), set())
+        finally:
+            vigia.gh, vigia.avisar_issue = orig
+        self.assertIn(('run', 'cancel', '7', '--repo', vigia.REPO), llamadas)
+        self.assertNotIn(('aviso',), llamadas)
+        self.assertTrue(any(a[:2] == ('workflow', 'run') for a in llamadas))      # relanza la de hoy
+
+    def test_audit014_anterior_habil_salta_feriados(self):
+        import contexto
+        self.assertEqual(contexto.anterior_habil(dt.date(2026, 11, 27), {'2026-11-26'}), dt.date(2026, 11, 25))   # viernes tras Thanksgiving
+        self.assertEqual(contexto.anterior_habil(dt.date(2026, 11, 30), {'2026-11-26'}), dt.date(2026, 11, 27))   # lunes → viernes
+        self.assertIn('2026-11-26', contexto.feriados_bolsa())                                                    # lee los FERIADOS del bot
+
 
 if __name__ == '__main__':
     unittest.main()

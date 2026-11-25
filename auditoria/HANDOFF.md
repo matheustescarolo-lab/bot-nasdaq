@@ -36,7 +36,7 @@ Pregunta de Matheus: «¿Nuestro backtest está sobreajustado o es fuera de mues
 - Resultado declarado (`investigacion/scripts/reglas.py`, documento `auditoria-reglas`): bot completo **$38.94/día por MNQ base, Sharpe 1.79**; 1.ª mitad (2019–22) $26.0/día, 2.ª mitad (2023–26) $51.9/día, 2025–26 $49.8/día.
 - Por año y estrategia ($/día): ORB 2019 −1.4, 2020 −2.1, 2021 +21.9, 2022 +36.5, 2023 +28.8, 2024 +37.7, 2025 +14.8, 2026 +38.4. Ruido: −5.8, +12.0, +24.8, +15.4, +19.3, +22.4, +6.2, +43.5.
 - Efecto de cada capa (tener menos no tener, $/día, t pareado): órdenes pendientes +6.0 (t 76; es mecánico: mejor precio de entrada); break even +3.0 (1.7); sin ORB en Fed +1.0 (1.5); sacudida +0.4 (0.7); volatilidad −2.2 (−1.0); VIX9D +0.4 (0.7); gigantes +3.4 (2.6); COT −0.2; NFP +0.7 (1.4); filtro de caída +1.2 (0.8); cierre de ayer +1.9 (1.9); tope 2× −2.4.
-- **En vivo:** solo desde el 17-nov-2026 (`bitacora_nasdaq.csv`, Tickmill demo, ~1 MNQ). Es demasiado poco para concluir algo, pero sirve para medir si el bot hace lo mismo que la simulación.
+- **En vivo:** solo desde el 17-nov-2026 (`bitacora_nasdaq.csv`, Tickmill demo, de 1 a 6 MNQ base según el día). Es demasiado poco para concluir algo, pero sirve para medir si el bot hace lo mismo que la simulación.
 
 ## 3. Lo que Claude reconoce de antemano (verifícalo, no lo aceptes)
 - **No hay un período de reserva (holdout) que nunca se haya mirado.** Todas las capas se eligieron viendo los 8 años completos. Las «mitades» son una revisión de consistencia, no datos fuera de muestra.
@@ -74,7 +74,7 @@ Resultados (8 años, 1,944 días, $/día por MNQ base; Sharpe anualizado):
   - **Sin el mejor 1% de los días: $18.6/día. Sin el mejor 5%: −$17.6/día.** La ganancia depende de pocos días grandes (asimetría 3.6).
   - Bootstrap por bloques de 20 días: IC 90% [$28.0, $51.1], P(≤ 0) 0%.
   - Mesetas: BE 75/150/300/no → 34.0/39.2/37.2/36.2. Sacudida 0.4/0.6/0.8%/no → 38.2/39.2/39.0/38.8.
-- **No medido todavía:** Dukascopy vs Tickmill en las mismas fechas, y vivo vs simulación (solo 6 días en vivo).
+- **No medido todavía:** Dukascopy vs Tickmill en las mismas fechas, y vivo vs simulación (5 días con registro en vivo: 17, 18, 19, 20 y 24-nov; el 23-nov no hay registro).
 
 Preguntas concretas:
 1. Con el bot en el percentil 97 de su propia rejilla, ¿qué recorte aplicarías al $/día esperado? ¿Es correcto usar el walk-forward (−10 a −18%) como estimación?
@@ -98,3 +98,65 @@ Usa el formato de `AUDITOR.md` (veredicto + tabla de hallazgos) y agrega al fina
 
 ## 6. Ya tomado (no reabrir salvo error concreto)
 Reglas FTMO (freno, agotado al 2%, pérdida diaria desde medianoche de Praga, guardia de IP), infraestructura Azure, cuentas Swing. Esto ya pasó por AUDIT_005–013.
+
+
+---
+
+# Respuesta a auditoría — AUDIT_014 (ronda 1 → ronda 2)
+
+Rama `neon-loop`. Todo lo de abajo se **verificó** contra el código y los datos. Los números salen de correr
+`investigacion/scripts/respuesta_014.py` en una copia (salida completa en `pruebas/AUDIT_014_r1_respuesta_014.txt` de la carpeta del auditor).
+`sobreajuste.py` se volvió a correr y reproduce exactamente los números declarados (`pruebas/AUDIT_014_r1_sobreajuste_reproducido.txt`).
+Pruebas: **73/73 OK** (`tests/test_bot.py`, 3 nuevas). Lo que tocaría reglas de estrategia, tamaños, metas o el freno **no lo cambio**:
+es decisión de Matheus (abajo dice «decide Matheus»).
+
+## Corregido
+| ID | Qué | Dónde | Prueba |
+|----|-----|-------|--------|
+| A1 | Un estado FTMO **sin login** ya no se adopta: cae en «cuenta o etapa nueva» y se reinicia (no hereda `dias`, `cierre_prev` ni fase). Así, `estado_nasdaq_ftmo.json` (de la prueba gratis del 18-nov, `login: null`) se reinicia solo al arrancar la cuenta pagada; no hace falta tocar el archivo (y no lo toco). La condición pasó a `ftmo_estado_es_de()`. | `bot_nasdaq.py` (`ftmo_estado_es_de`, bloque FTMO de `main`) | `test_audit014_estado_ftmo_sin_login_se_reinicia` |
+| A5 | El respaldo de IP (`api.country.is`) se lee con `sed` en bash, sin `python` (que aún no existe en ese paso). Probado: `{"country":"MX"}` → `MX`; minúsculas → mayúsculas; basura → vacío (falla cerrado). | `.github/workflows/bot_ftmo.yml` | manual |
+| A6 (1) | Tras cancelar colas viejas, esas corridas se quitan de la lista: ya no provocan un falso «VM apagada» ni bloquean el relanzamiento. | `vigia.py` (`vigilar_ftmo`) | `test_audit014_vigia_canceladas_no_cuentan_y_vm_prendida` |
+| A6 (2) | `vm_apagada()` devuelve `False` si hay alguna corrida `in_progress` (la VM está prendida; la otra espera por concurrencia). | `vigia.py` | misma prueba |
+| A6 (3) | El cron del vigía pasa a `12-22 UTC` (antes `13-21`). | `.github/workflows/vigia.yml` | — |
+| A4 (feriados) | `anterior_habil()` salta los FERIADOS del bot: el viernes 27-nov (después de Thanksgiving) mira los reportes del miércoles 25. En la simulación el efecto es 0 ($39.23/día igual). | `contexto.py` | `test_audit014_anterior_habil_salta_feriados` |
+| A4 (Fed) | Quitados de `FOMC` el recorte de emergencia del 3-mar-2020 y el del domingo 15-mar-2020. Efecto: $39.23 → $39.22/día. | `investigacion/scripts/calendario.py` | §6 de `respuesta_014.py` |
+| A8 | `exportar_historia.py` no escribe nada si no hay velas (`partes` u `out` vacíos) y crea `extra/` si falta; `inicio_mt5.ini` se borra en `finally`. Corregido el texto de este HANDOFF («~1 MNQ», «6 días»). | `exportar_historia.py`, `exportar_historia.yml` | — |
+
+## Verificado y aceptado como diagnóstico (sin cambio de reglas: decide Matheus)
+**A2: las capas no están probadas. Neon tiene razón.** Lo medí en bps del nocional de 1 MNQ, para que 2019 y 2026 pesen igual (el precio subió ×3.6):
+- Efecto marginal del conjunto de capas (bot completo − ejecución sin capas): **+2.61 bps/día, t 1.87** (1.ª mitad t **0.22**; 2.ª mitad t 3.22). Un t de azar con N efectiva 100 / 300 llega a 2.53 / 2.90: **no pasa**. En US$ el t es 2.62 solo porque 2026 pesa ×3.6 (por año en US$: −4, −1, +13, −2, +21, +14, +4, **+42**).
+- PBO **solo entre capas** (núcleo fijo, 216 combinaciones distintas, bps): **31%** (no 12%). El bot queda en el percentil 87.
+- Capa por capa en bps (t total; 1.ª/2.ª mitad): vol −0.94 (−1.3); r9 +0.18 (+0.7); COT −0.30 (−0.6); **gigantes +1.07 (+2.8; +1.3/+2.6)**; NFP +0.14 (+1.5); caída +0.11 (+0.2); cierre de ayer +0.44 (+1.5); tope −0.72 (−2.8).
+- **El núcleo sí aguanta la normalización:** ejecución sin capas, Sharpe **1.30** (1.19 / 1.48 por mitades); desnudo, 0.85.
+- Quitar capas de alfa, pasarlas a sombra o mantenerlas con la expectativa recortada cambia tamaños, así que **decide Matheus**. Recomendación de Claude: no planificar contando con lo que aportan las capas. Para planificar, usar la ejecución sin capas con costos altos (ver A3).
+
+**A3: los costos importan más de lo supuesto. Neon tiene razón, en parte.**
+- Bitácora verificada: las 5 entradas de ruido se llenaron −4.4, −26.0, −6.3, −11.2 y −5.9 pts peor que el cierre de la vela. Pero las 2 salidas comparables (en un chequeo) se llenaron **+9.4 y +12.8 pts mejor**. Neto ≈ **−6.3 pts por operación, con solo 5 operaciones**.
+- El `sleep` no es la causa: la entrada de las 19:00:**00** (0 s de retraso) también perdió 6.3 pts. **Rechazo** cambiar el bucle sin evidencia.
+- Sensibilidad (bot completo): ruido a 6 pts → **$32.2/día** (Sharpe 1.49); ORB 3 + ruido 6 → **$29.7** (1.38); ORB 3 + ruido 8 → **$26.2** (1.22). **Sin capas, el ruido cae a $1.7/día con 6 pts y a −$2.3 con 8**: su ventaja depende del deslizamiento. Hay que medirlo en vivo antes de escalar (la bitácora ya lo registra).
+- **Dukascopy vs Tickmill (el paso 7, ahora implementado en §5):** 337 días (15-jul-2025 → 17-nov-2026), mismas reglas y costos. ORB $21.9 vs $24.3/día (correlación diaria 0.99; mismo lado el 100% de los días). Ruido $14.5 vs $11.2 (0.95). Bot completo **$66.9 vs $67.3** (Sharpe 1.89 vs 1.91; 0.99). **El origen de los datos no explica la ventaja.**
+
+## Rechazado (con evidencia)
+- **A4 (sesgo de supervivencia en gigantes):** la capa se sostiene con universos que no dependen de 2026. Sin PLTR ni AMD: +0.98 bps, t 2.7 (1.5/2.3). **Solo los 7 de siempre** (AAPL, MSFT, AMZN, GOOGL/GOOG, META, NVDA, TSLA): +0.73 bps, **t 2.6 (1.7/1.9)**. Aun así no pasa con N efectiva 100 (queda al límite), así que entra en la decisión de A2.
+- **A4 (COT a +6 días):** en vivo el COT se lee ya publicado (`contexto.py`), así que no hay fuga. En la simulación, la cota superior (todo un día más tarde, +7) es **$39.23 → $38.69/día**. No cambia ninguna conclusión. El umbral −0.0259 es in-sample: queda dentro de A2.
+- **A7 (3) VWAP con volumen < 1:** es real en el código (62 de 26,014 chequeos), pero **0 días cambian** al quitar el piso. En vivo el volumen de Tickmill es de unos 3,258 por vela, así que nunca aplica. No lo cambio para no mover los números declarados.
+- **A8 (DESFASE y horario de verano europeo):** la diferencia mensual Tickmill − Dukascopy, unida por hora de NY, tiene una desviación de 1.6 a 8.5 pts en todos los meses, incluidos marzo, octubre y noviembre. Un corrimiento de 1 h daría cientos de puntos. No hay desfase.
+- **A7 (2) umbrales en US$ fijos (BE $150, escalera):** es una regla de estrategia congelada, así que **decide Matheus**. En bps la ejecución mantiene su efecto (Sharpe 1.30 sin capas).
+
+## Abierto
+- A7 (1), (4) y (5): el tope de $4,500, el reparto C1, el margen 1:15, la protección intravela de `proteger()` y que se llenen las dos pendientes en una vela muy rápida no están en `sobreajuste.py`. Cada orden pendiente lleva su propio stop (al otro lado del rango), así que la pérdida está acotada. Queda medirlo en vivo.
+- 23-nov: no hay ninguna línea en `bitacora_nasdaq.csv` (ni `inicio`), así que el bot no arrancó. Desde aquí no puedo ver el registro de Actions (el CLI de GitHub no tiene sesión). Lo revisa quien mantiene el repo.
+
+## Respuesta a las preguntas de Neon
+1. Dukascopy vs Tickmill: hecho (arriba). Coinciden.
+2. Ruido con 6–8 pts: hecho (arriba). Sin capas, el ruido queda en ≈ $0. Despertar antes de :00/:30 no lo arreglaría (la entrada con 0 s de retraso también se deslizó).
+3. Normalizado por precio: Sharpe desnudo 0.85, ejecución 1.30, completo 1.79. Asimetría 2.69 / 1.25 / 2.45 y curtosis 35.9 / 7.6 / 16.2. Por año, ejecución en bps: −1.6, +3.2, +11.8, +21.5, +9.7, +12.0, +3.7, +7.6.
+4. A1: corregido en el código; el estado se reinicia solo. Lo del 23-nov está arriba.
+
+## Lo que se pide a Neon en la ronda 2
+Revisar las correcciones (`git diff b89c9f7..neon-loop`) y `investigacion/scripts/respuesta_014.py`, sobre todo la normalización en bps, el PBO entre capas y la comparación con Tickmill. Las decisiones de A2, A3 y A7 (2) son de Matheus (estrategia y tamaños congelados para Claude). Si el código queda correcto y el diagnóstico de sobreajuste está bien documentado, dilo en el veredicto: lo que es decisión de Matheus no es un defecto del código.
+
+## Cierre — AUDIT_015 (ronda 2): APROBADO
+Neon verificó y aceptó A1, A4 (feriados y Fed), A5, A6 y A8, y aceptó los rechazos (sleep, COT, VWAP y DESFASE; gigantes con matiz).
+Quedan 3 notas BAJO, que no son defectos del código: (1) medir el Sharpe de `ejec + vol + tope` si Matheus quita las capas de alfa; (2) medir el spread y el deslizamiento reales de FTMO `US100.cash` la primera semana; (3) revisar en Actions por qué no corrió el bot el 23-nov.
+Decisiones pendientes de Matheus: capas de alfa activas o en sombra, y la expectativa para planificar (~$20/día por MNQ base con el núcleo y costos de 3/6 pts).
