@@ -74,3 +74,5 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-25 14:47:59,contexto,,,,,"07:30 Core PCE Price Index m/m, 07:30 Prelim GDP q/q, 07:30 Prelim GDP Price Index q/q · reportaron ayer: [] · hoy: [] / [] · VIX 31.72"
 2026-11-25 15:00:01,pendiente,Rango 30 min,compra,6.0,25413.78,"compra si rompe arriba del rango de 30 min (24,966.91–25,413.77) · stop 24,966.91 · orden 383369701"
 2026-11-25 15:00:02,pendiente,Rango 30 min,venta,6.0,24966.90,"venta si rompe abajo del rango de 30 min (24,966.91–25,413.77) · stop 25,413.77 · orden 383369715"
+2026-11-25 15:00:10,cancela,Rango 30 min,venta,6.0,24966.90,orden pendiente cancelada: se llenó la del otro lado
+2026-11-25 15:00:10,entrada,Rango 30 min,compra,6.0,25413.78,"se llenó la orden pendiente del rango de 30 min (24,966.91–25,413.77) · deslizamiento +0.01 pts · stop 24,966.91 · posición 383369701"
