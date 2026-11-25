@@ -1062,6 +1062,23 @@ class TestBotLogica(unittest.TestCase):
         self.assertEqual(contexto.anterior_habil(dt.date(2026, 11, 30), {'2026-11-26'}), dt.date(2026, 11, 27))   # lunes → viernes
         self.assertIn('2026-11-26', contexto.feriados_bolsa())                                                    # lee los FERIADOS del bot
 
+    def test_capas_en_sombra_no_cambian_el_tamano(self):
+        # Decisión 24-nov (AUDIT_014/015): COT, VIX9D, NFP y cierre de ayer se anotan como «sombra» pero no cambian el tamaño;
+        # gigantes sigue activo.
+        self.assertEqual(bot_nasdaq.CAPAS_SOMBRA, {'cot', 'vix9d', 'nfp', 'cierre_ayer'})
+        bot_nasdaq.CONTEXTO = {'marcas': {'fondos_semana': 'recortaron fuerte', 'empleo_nfp': True},
+                               'reportes_ayer': [], 'reportes_hoy': []}
+        f, nfp, mot = bot_nasdaq.factor_evento()
+        self.assertEqual((f, nfp, mot), (1.0, True, []))
+        self.assertIn('sombra', Path(bot_nasdaq.BITACORA).read_text(encoding='utf-8'))
+        bot_nasdaq.CONTEXTO['reportes_ayer'] = [{'simbolo': 'NVDA', 'hora': 'después del cierre'}]
+        f, _, mot = bot_nasdaq.factor_evento()
+        self.assertEqual(f, bot_nasdaq.EVENTO_GIGANTES)                 # gigantes ×1.5, sin el ×0.5 del COT
+        src = Path(bot_nasdaq.__file__).read_text(encoding='utf-8')       # las 4 ramas de tamaño consultan CAPAS_SOMBRA
+        for capa in ('cot', 'vix9d', 'nfp', 'cierre_ayer'):
+            self.assertIn(f"'{capa}' in CAPAS_SOMBRA", src)
+        bot_nasdaq.CONTEXTO = {}
+
 
 if __name__ == '__main__':
     unittest.main()

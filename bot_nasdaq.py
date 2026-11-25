@@ -310,7 +310,10 @@ def factor_evento():
     if ayer or hoy_antes:
         f *= EVENTO_GIGANTES; mot.append(f"reporte de gigantes ({', '.join(ayer + hoy_antes)})")
     if m.get('fondos_semana') == 'recortaron fuerte':
-        f *= COT_RECORTE; mot.append('fondos apalancados recortaron fuerte (COT)')
+        if 'cot' in CAPAS_SOMBRA:
+            log('sombra', detalle=f'fondos apalancados recortaron fuerte (COT): sería ×{COT_RECORTE:g}; en sombra, no cambia el tamaño')
+        else:
+            f *= COT_RECORTE; mot.append('fondos apalancados recortaron fuerte (COT)')
     return f, bool(m.get('empleo_nfp')), mot
 
 
@@ -1068,6 +1071,9 @@ CAIDA_RUIDO, CAIDA_ORB = -0.010, -0.020   # si ayer el Nasdaq cayó más que est
 CIERRE_FUERTE, CIERRE_DEBIL = 0.8, 0.2     # zona de ruido: ×1.5 si ayer cerró en el 20% alto de su rango, ×0.5 si en el 20% bajo
 # 8 años (ruido $/trade por posición del cierre de ayer: −2.6, 3.6, 8.0, 12.3, 20.7 — escalonado). Sobre todo lo anterior: $37.4→$41.0/día,
 # Sharpe 1.80→1.81, caída −$4,454→−$3,987.
+# Capas en sombra (decisión de Matheus 24-nov tras AUDIT_014/015): medidas en bps no muestran ventaja (t < 1.5).
+# Se calculan y se anotan en la bitácora como «sombra», pero NO cambian el tamaño. Para reactivar una, quítala del conjunto.
+CAPAS_SOMBRA = {'cot', 'vix9d', 'nfp', 'cierre_ayer'}
 MIEDO_CORTO = 1.10   # VIX9D/VIX al cierre de ayer: arriba de esto, medio tamaño (8 años: esos días −$40/día vs +$35, t −2.4; Sharpe 1.50→1.57)
 
 
@@ -1524,8 +1530,11 @@ def main():
     f_orb = peso
     r9 = (CONTEXTO.get('marcas') or {}).get('vix9d_vix') if CONTEXTO else None
     if r9 and r9 > MIEDO_CORTO:
-        f_orb *= 0.5
-        log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → ×0.5')
+        if 'vix9d' in CAPAS_SOMBRA:
+            log('sombra', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO}: sería ×0.5; en sombra, no cambia el tamaño')
+        else:
+            f_orb *= 0.5
+            log('tamaño', detalle=f'VIX 9 días / VIX 30 días = {r9:.3f} > {MIEDO_CORTO} (miedo de corto plazo) → ×0.5')
     f_ev, nfp, motivos = factor_evento()
     if f_ev != 1.0:
         f_orb *= f_ev
@@ -1540,12 +1549,16 @@ def main():
             raise ValueError('sin días previos disponibles')
         ay = prev0[-1]; pos_ayer = (float(ay.c.iloc[-1]) - float(ay.l.min())) / max(float(ay.h.max() - ay.l.min()), 1e-9)
         f_c = 1.5 if pos_ayer > CIERRE_FUERTE else 0.5 if pos_ayer < CIERRE_DEBIL else 1.0
-        if f_c != 1.0:
+        if f_c != 1.0 and 'cierre_ayer' in CAPAS_SOMBRA:
+            log('sombra', detalle=f"ayer cerró en el {pos_ayer:.0%} de su rango: zona de ruido sería ×{f_c:g}; en sombra, no cambia el tamaño")
+        elif f_c != 1.0:
             f_ruido *= f_c
             log('tamaño', detalle=f"ayer cerró en el {pos_ayer:.0%} de su rango → zona de ruido ×{f_c:g}")
     except Exception as e:
         log('aviso', detalle=f'no pude revisar el cierre de ayer ({e})')
-    if nfp:
+    if nfp and 'nfp' in CAPAS_SOMBRA:
+        log('sombra', detalle=f'día de empleo (NFP): zona de ruido sería ×{NFP_RUIDO:g}; en sombra, no cambia el tamaño')
+    elif nfp:
         f_ruido *= NFP_RUIDO
         log('tamaño', detalle=f'día de empleo (NFP): zona de ruido ×{NFP_RUIDO:g}')
     if MODO == 'ftmo' and (f_orb > TOPE_FTMO or f_ruido > TOPE_FTMO):   # FTMO revisa tamaños «mucho más grandes» que los habituales
@@ -1630,7 +1643,7 @@ def main():
                                 f"{m.get('gigantes_reportan_hoy_antes')} / {m.get('gigantes_reportan_hoy_tras_cierre')} · VIX {m.get('vix')}"
                                 + (' · DÍA DE DECISIÓN DE LA FED: no opera el rango de 30 min' if m.get('decision_fed') else ''))
     else:
-        log('aviso', detalle='SIN CONTEXTO del día (no llegó contexto/hoy.json): sin filtro de Fed por contexto ni recorte por VIX9D')
+        log('aviso', detalle='SIN CONTEXTO del día (no llegó contexto/hoy.json): sin filtro de Fed por contexto ni gigantes')
     no_opera = str(hoy) in MEDIO_DIA
     if no_opera:
         log('filtro', detalle='medio día de bolsa (cierra 13:00): no opera; la simulación de 8 años no incluye medios días')
