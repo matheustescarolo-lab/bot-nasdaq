@@ -72,3 +72,5 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-25 14:47:59,inicio,,,,,"tramo de la mañana · USTEC · 6 lotes por estrategia (≈3 MNQ) · equity 53,112.74 · FTMO fase 1 · meta del día +5,428 · freno en equity 48,513 · cuenta demo · trabaja hasta las 12:50 NY"
 2026-11-25 14:47:59,filtro,,,,,ayer el Nasdaq cerró -1.94%: hoy no opera la zona de ruido
 2026-11-25 14:47:59,contexto,,,,,"07:30 Core PCE Price Index m/m, 07:30 Prelim GDP q/q, 07:30 Prelim GDP Price Index q/q · reportaron ayer: [] · hoy: [] / [] · VIX 31.72"
+2026-11-25 15:00:01,pendiente,Rango 30 min,compra,6.0,25413.78,"compra si rompe arriba del rango de 30 min (24,966.91–25,413.77) · stop 24,966.91 · orden 383369701"
+2026-11-25 15:00:02,pendiente,Rango 30 min,venta,6.0,24966.90,"venta si rompe abajo del rango de 30 min (24,966.91–25,413.77) · stop 25,413.77 · orden 383369715"
