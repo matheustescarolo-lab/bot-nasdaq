@@ -2,8 +2,8 @@
 # Uso (PowerShell como Administrador, dentro de la VM):
 #   irm https://raw.githubusercontent.com/matheustescarolo-lab/bot-nasdaq/main/infra/preparar_vm.ps1 -OutFile C:\preparar_vm.ps1
 #   powershell -ExecutionPolicy Bypass -File C:\preparar_vm.ps1
-# Pide: el token del runner (GitHub → Settings → Actions → Runners → New self-hosted runner) y la contraseña de botadmin.
-# No guarda la contraseña en texto plano: el inicio de sesión automático usa Autologon de Sysinternals (secreto LSA).
+# Pide: el token del runner (GitHub > Settings > Actions > Runners > New self-hosted runner) y la contrasena de botadmin.
+# No guarda la contrasena en texto plano: el inicio de sesion automatico usa Autologon de Sysinternals (secreto LSA).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -35,11 +35,11 @@ if (-not (Test-Path 'C:\Program Files\PowerShell\7\pwsh.exe')) {
     Start-Process msiexec.exe -ArgumentList '/i', "$tmp\pwsh.msi", '/qn', 'ADD_PATH=1' -Wait
 }
 
-Write-Host '3/7 Energía: nunca suspender ni apagar la pantalla...' -ForegroundColor Cyan
+Write-Host '3/7 Energia: nunca suspender ni apagar la pantalla...' -ForegroundColor Cyan
 powercfg /change standby-timeout-ac 0; powercfg /change monitor-timeout-ac 0; powercfg /hibernate off
 tzutil /s 'Central Standard Time (Mexico)'
 
-Write-Host '4/7 Windows Update: sin reinicios con la sesión abierta y horario activo 6:00-22:00...' -ForegroundColor Cyan
+Write-Host '4/7 Windows Update: sin reinicios con la sesion abierta y horario activo 6:00-22:00...' -ForegroundColor Cyan
 $au = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
 New-Item -Path $au -Force | Out-Null
 Set-ItemProperty $au -Name NoAutoRebootWithLoggedOnUsers -Value 1 -Type DWord
@@ -49,7 +49,7 @@ Set-ItemProperty $ux -Name ActiveHoursStart -Value 6 -Type DWord
 Set-ItemProperty $ux -Name ActiveHoursEnd -Value 22 -Type DWord
 
 Write-Host '5/7 Runner de GitHub...' -ForegroundColor Cyan
-$token = Read-Host 'Pega el token del runner (solo el código que va después de --token)'
+$token = Read-Host 'Pega el token del runner (solo el codigo que va despues de --token)'
 $dir = 'C:\actions-runner'; New-Item -ItemType Directory -Force $dir | Out-Null
 if (-not (Test-Path "$dir\config.cmd")) {
     $u = Ultimo 'actions/runner' '^actions-runner-win-x64-[\d\.]+\.zip$'
@@ -60,15 +60,15 @@ Push-Location $dir
 & .\config.cmd --unattended --replace --url $repo --token $token --name azure-mx --labels ftmo-mx --work _work
 Pop-Location
 
-Write-Host '6/7 El runner arranca al iniciar sesión (MT5 necesita una sesión de Windows abierta)...' -ForegroundColor Cyan
+Write-Host '6/7 El runner arranca al iniciar sesion (MT5 necesita una sesion de Windows abierta)...' -ForegroundColor Cyan
 $accion = New-ScheduledTaskAction -Execute "$dir\run.cmd" -WorkingDirectory $dir
 $disparo = New-ScheduledTaskTrigger -AtLogOn -User "$env:COMPUTERNAME\botadmin"
 $quien = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\botadmin" -LogonType Interactive -RunLevel Highest
 $conf = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName 'GitHub runner (bot FTMO)' -Action $accion -Trigger $disparo -Principal $quien -Settings $conf -Force | Out-Null
 
-Write-Host '7/7 Inicio de sesión automático de botadmin (al reiniciar, el runner vuelve solo)...' -ForegroundColor Cyan
-$seg = Read-Host 'Contraseña de botadmin (la de Azure)' -AsSecureString
+Write-Host '7/7 Inicio de sesion automatico de botadmin (al reiniciar, el runner vuelve solo)...' -ForegroundColor Cyan
+$seg = Read-Host 'Contrasena de botadmin (la de Azure)' -AsSecureString
 $plano = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
 Invoke-WebRequest 'https://download.sysinternals.com/files/AutoLogon.zip' -OutFile "$tmp\autologon.zip"
 Expand-Archive "$tmp\autologon.zip" -DestinationPath "$tmp\autologon" -Force
@@ -76,4 +76,4 @@ Start-Process "$tmp\autologon\Autologon64.exe" -ArgumentList 'botadmin', $env:CO
 $plano = $null
 
 Write-Host ''
-Write-Host 'LISTO. Reinicia la VM (Restart-Computer). Al volver, el runner "azure-mx" debe aparecer Idle (verde) en GitHub → Settings → Actions → Runners.' -ForegroundColor Green
+Write-Host 'LISTO. Reinicia la VM (Restart-Computer). Al volver, el runner "azure-mx" debe aparecer Idle (verde) en GitHub > Settings > Actions > Runners.' -ForegroundColor Green
