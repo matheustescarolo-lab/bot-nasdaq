@@ -1005,6 +1005,23 @@ class TestBotLogica(unittest.TestCase):
         bot_nasdaq.s50_intradia(est, -4280.0, colchon=360.0)
         self.assertEqual((d['fijo'], d['quemado']), (-2140.0, True))
 
+    def test_audit013_vigia_ftmo_cola_vieja_y_vm_apagada(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import vigia
+        c = lambda i, st, ini: dict(id=i, status=st, conclusion=None, created_at=ini, updated_at=ini, display_title='Bot FTMO')
+        ayer = c(1, 'queued', '2026-11-24T21:00:00Z')                       # de ayer: se cancela aunque sea temprano
+        hoy = c(2, 'queued', '2026-11-25T14:45:00Z')                        # 9:45 NY
+        corriendo = c(3, 'in_progress', '2026-11-25T14:45:00Z')
+        manana = dt.datetime(2026, 11, 25, 8, 0, tzinfo=vigia.NY)
+        self.assertEqual(vigia.cola_vieja(manana, [ayer, hoy, corriendo], set()), [1])
+        tarde = dt.datetime(2026, 11, 25, 16, 10, tzinfo=vigia.NY)          # después de las 16:05 NY: cancela la de hoy también
+        self.assertEqual(vigia.cola_vieja(tarde, [hoy, corriendo], set()), [2])
+        self.assertEqual(vigia.cola_vieja(dt.datetime(2026, 11, 27, 13, 10, tzinfo=vigia.NY), [c(4, 'queued', '2026-11-27T17:40:00Z')], {'2026-11-27'}), [4])
+        self.assertFalse(vigia.vm_apagada(dt.datetime(2026, 11, 25, 9, 55, tzinfo=vigia.NY), [hoy], set(), set()))   # 10 min: todavía no
+        self.assertTrue(vigia.vm_apagada(dt.datetime(2026, 11, 25, 10, 5, tzinfo=vigia.NY), [hoy], set(), set()))    # 20 min en espera
+        self.assertFalse(vigia.vm_apagada(dt.datetime(2026, 11, 25, 10, 5, tzinfo=vigia.NY), [corriendo], set(), set()))
+        self.assertFalse(vigia.vm_apagada(dt.datetime(2026, 11, 26, 10, 5, tzinfo=vigia.NY), [hoy], {'2026-11-26'}, set()))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -3,7 +3,8 @@
 #   irm https://raw.githubusercontent.com/matheustescarolo-lab/bot-nasdaq/main/infra/preparar_vm.ps1 -OutFile C:\preparar_vm.ps1
 #   powershell -ExecutionPolicy Bypass -File C:\preparar_vm.ps1
 # Pide: el token del runner (GitHub > Settings > Actions > Runners > New self-hosted runner) y la contrasena de botadmin.
-# No guarda la contrasena en texto plano: el inicio de sesion automatico usa Autologon de Sysinternals (secreto LSA).
+# No guarda la contrasena en texto plano: el inicio de sesion automatico usa Autologon de Sysinternals (secreto LSA),
+# que se abre en su ventana para escribir la contrasena ahi (nunca pasa por la linea de comandos).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -24,8 +25,10 @@ function Ultimo($proyecto, $patron) {
 Write-Host '1/7 Git para Windows (trae bash, que usa el flujo)...' -ForegroundColor Cyan
 if (-not (Test-Path 'C:\Program Files\Git\bin\bash.exe')) {
     $u = Ultimo 'git-for-windows/git' '^Git-.*-64-bit\.exe$'
+    if (-not $u) { throw 'No encontre el instalador de Git para Windows' }
     Invoke-WebRequest $u -OutFile "$tmp\git.exe"
-    Start-Process "$tmp\git.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES' -Wait
+    $p = Start-Process "$tmp\git.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES' -Wait -PassThru
+    if ($p.ExitCode -ne 0 -or -not (Test-Path 'C:\Program Files\Git\bin\bash.exe')) { throw "Git no se instalo (codigo $($p.ExitCode))" }
 }
 $rutas = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 foreach ($p in 'C:\Program Files\Git\bin', 'C:\Program Files\Git\cmd') {
@@ -51,10 +54,10 @@ tzutil /s 'Central Standard Time (Mexico)'
 
 Write-Host '4/7 Windows Update: sin reinicios con la sesion abierta y horario activo 6:00-22:00...' -ForegroundColor Cyan
 $au = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
-New-Item -Path $au -Force | Out-Null
+if (-not (Test-Path $au)) { New-Item -Path $au -Force | Out-Null }     # -Force sobre una clave existente la borraria con sus valores
 Set-ItemProperty $au -Name NoAutoRebootWithLoggedOnUsers -Value 1 -Type DWord
 $ux = 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings'
-New-Item -Path $ux -Force | Out-Null
+if (-not (Test-Path $ux)) { New-Item -Path $ux -Force | Out-Null }
 Set-ItemProperty $ux -Name ActiveHoursStart -Value 6 -Type DWord
 Set-ItemProperty $ux -Name ActiveHoursEnd -Value 22 -Type DWord
 
@@ -63,12 +66,15 @@ $token = Read-Host 'Pega el token del runner (solo el codigo que va despues de -
 $dir = 'C:\actions-runner'; New-Item -ItemType Directory -Force $dir | Out-Null
 if (-not (Test-Path "$dir\config.cmd")) {
     $u = Ultimo 'actions/runner' '^actions-runner-win-x64-[\d\.]+\.zip$'
+    if (-not $u) { throw 'No encontre el paquete del runner de GitHub' }
     Invoke-WebRequest $u -OutFile "$tmp\runner.zip"
     Expand-Archive "$tmp\runner.zip" -DestinationPath $dir -Force
 }
 Push-Location $dir
 & .\config.cmd --unattended --replace --url $repo --token $token --name azure-mx --labels ftmo-mx --work _work
+$codigo = $LASTEXITCODE
 Pop-Location
+if ($codigo -ne 0) { throw "El runner no se registro (codigo $codigo): el token dura 1 hora; pide uno nuevo y repite" }
 
 Write-Host '6/7 El runner arranca al iniciar sesion (MT5 necesita una sesion de Windows abierta)...' -ForegroundColor Cyan
 $accion = New-ScheduledTaskAction -Execute "$dir\run.cmd" -WorkingDirectory $dir
@@ -78,12 +84,12 @@ $conf = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -Res
 Register-ScheduledTask -TaskName 'GitHub runner (bot FTMO)' -Action $accion -Trigger $disparo -Principal $quien -Settings $conf -Force | Out-Null
 
 Write-Host '7/7 Inicio de sesion automatico de botadmin (al reiniciar, el runner vuelve solo)...' -ForegroundColor Cyan
-$seg = Read-Host 'Contrasena de botadmin (la de Azure)' -AsSecureString
-$plano = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
 Invoke-WebRequest 'https://download.sysinternals.com/files/AutoLogon.zip' -OutFile "$tmp\autologon.zip"
 Expand-Archive "$tmp\autologon.zip" -DestinationPath "$tmp\autologon" -Force
-Start-Process "$tmp\autologon\Autologon64.exe" -ArgumentList 'botadmin', $env:COMPUTERNAME, $plano, '/accepteula' -Wait
-$plano = $null
+Write-Host '   Se abre Autologon: Username = botadmin, Domain = (el que trae), Password = la de Azure > Enable > OK.' -ForegroundColor Yellow
+Start-Process "$tmp\autologon\Autologon64.exe" -ArgumentList '/accepteula' -Wait
+$w = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+if ($w.AutoAdminLogon -ne '1' -or $w.DefaultUserName -ne 'botadmin') { throw 'El inicio de sesion automatico no quedo activo: abre Autologon de nuevo y dale Enable' }
 
 Write-Host ''
 Write-Host 'LISTO. Reinicia la VM (Restart-Computer). Al volver, el runner "azure-mx" debe aparecer Idle (verde) en GitHub > Settings > Actions > Runners.' -ForegroundColor Green
