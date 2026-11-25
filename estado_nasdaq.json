@@ -54,7 +54,7 @@
  "dia": {
   "fecha": "2026-11-25",
   "eq_inicio": 53112.74,
-  "min_eq": 53112.74,
+  "min_eq": 51274.7,
   "cerrado": false,
   "quemado": false,
   "meta": 5428.360000000001,
@@ -62,13 +62,14 @@
   "obj": 58491.1,
   "sombra_50k": {
    "eq_inicio": 52310.82,
-   "min_eq": 52310.82,
+   "min_eq": 51391.8,
    "fijo": null,
    "quemado": false,
    "meta": 2714.1800000000003,
    "piso": 49810.82,
    "obj": 55000.0
-  }
+  },
+  "salidas_srv": []
  },
  "ftmo_50k": {
   "fase": 1,
