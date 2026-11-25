@@ -28,3 +28,11 @@ La caída in-sample (−$2.7/día) es la esperada: esas capas se eligieron con l
 
 ## Ya tomado (no reabrir)
 La decisión de pasar estas 4 capas a sombra (Matheus). Todo lo aprobado en AUDIT_005–015.
+
+---
+
+# Cierre: AUDIT_016 — APROBADO (ronda 1)
+Claude lo verificó por su lado antes del veredicto: 74/74 pruebas OK en una copia. `COT_RECORTE`, `NFP_RUIDO`, `MIEDO_CORTO` y `CIERRE_FUERTE/DEBIL` solo se usan en las 4 ramas protegidas por `CAPAS_SOMBRA`; no hay otro camino que cambie `f_orb`/`f_ruido`.
+Notas BAJO de Neon, sin cambio ahora (no bloquean, y tocar el cálculo de tamaño sin necesidad agrega riesgo antes del 1-dic):
+- A1: cuando se vuelva a tocar el tamaño, extraer el bloque a una función pura (`factores_tamano`) y probar en ejecución las 4 ramas en sombra y activadas.
+- A2: al medir las capas en vivo, contar los eventos `sombra` una vez por fecha de NY (se repiten en cada tramo). El aviso «SIN CONTEXTO» se actualiza solo si se reactiva alguna capa que dependa del contexto.
