@@ -18,6 +18,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write     # para lanzar bot_ftmo.yml (cuenta FTMO en el servidor propio de Azure)
 
 concurrency:
   group: bot-nasdaq
@@ -55,6 +56,20 @@ jobs:
           done
           if [ "$ok" != 1 ]; then echo "::error::No pude guardar el contexto en el repositorio (5 intentos)"; exit 1; fi
 
+  lanzar_ftmo:
+    # La cuenta FTMO corre en su propio flujo (bot_ftmo.yml) en el servidor de Azure en México, con concurrencia aparte:
+    # si la VM está caída, ese trabajo espera solo y este (Tickmill) sigue normal.
+    needs: contexto
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PRUEBA: ${{ inputs.prueba == true && 'true' || 'false' }}
+        run: gh workflow run bot_ftmo.yml --repo "$GITHUB_REPOSITORY" --ref main -f prueba="$PRUEBA"
+
   operar:
     # Dos cuentas a la vez con la misma llamada de cron-job.org: Tickmill (demo, 3 versiones de Lucid) y FTMO (reto 2-Step)
     needs: contexto
@@ -71,11 +86,6 @@ jobs:
             etapa: 'reto'
             ftmo_inicial: '100000'
             instalador: https://download.terminal.free/cdn/web/19497/mt5/tickmill5setup.exe
-          - cuenta: ftmo
-            mnq: '6'           # reto moderado (meta: FTMO 100K a €439, un reto a la vez): 4 retos → cobra ~72–87%, profit típico 12 m +$16.7k a +$26.4k
-            instalador: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
-            etapa: 'reto'      # prueba gratis: fase 1 y 2 en la misma cuenta. Reto pagado: 'fase1' → 'fase2' (cuenta nueva) → 'fondeada' con mnq '4'
-            ftmo_inicial: '100000'
     env:
       BOT_CUENTA: ${{ matrix.cuenta }}
       BOT_MNQ: ${{ matrix.mnq }}

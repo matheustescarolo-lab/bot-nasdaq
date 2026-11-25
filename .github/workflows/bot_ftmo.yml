@@ -1,0 +1,150 @@
+name: Bot Nasdaq FTMO (servidor propio)
+run-name: ${{ inputs.prueba == true && 'Bot FTMO (prueba)' || 'Bot FTMO' }}
+# Cuenta FTMO en el servidor propio de Azure (México): FTMO prohíbe entrar a MetaTrader desde IP de EE. UU.
+# Lo lanza bot_nasdaq.yml al terminar su contexto (mismo cron-job.org). Flujo y concurrencia APARTE:
+# si la VM está apagada o caída, este trabajo espera solo, sin frenar el ensayo de Tickmill.
+
+on:
+  workflow_dispatch:
+    inputs:
+      prueba:
+        description: 'Solo probar la conexion, sin operar'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: bot-ftmo
+  cancel-in-progress: false
+
+jobs:
+  operar:
+    runs-on: [self-hosted, ftmo-mx]
+    timeout-minutes: 240
+    env:
+      BOT_CUENTA: ftmo
+      BOT_MODO: ftmo
+      BOT_MNQ: ${{ vars.FTMO_MNQ || '6' }}                  # 100K: 6 en el reto (3 la primera semana), 4 en la fondeada
+      BOT_FTMO_ETAPA: ${{ vars.FTMO_ETAPA || 'reto' }}       # prueba gratis: reto · pagado: fase1 → fase2 → fondeada
+      BOT_FTMO_INICIAL: ${{ vars.FTMO_INICIAL || '100000' }}
+      MT5_LOGIN: ${{ secrets.FTMO_LOGIN }}
+      MT5_PASSWORD: ${{ secrets.FTMO_PASSWORD }}
+      MT5_SERVER: ${{ secrets.FTMO_SERVER }}
+      INSTALADOR: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
+    steps:
+      - name: ¿Hay cuenta configurada?
+        shell: bash
+        run: |
+          if [ -z "$MT5_LOGIN" ]; then echo "Sin secretos FTMO, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
+
+      - name: FTMO prohíbe entrar a MetaTrader desde EE. UU. (revisa el país de la IP)
+        if: env.SALTAR != '1'
+        shell: bash
+        run: |
+          pais=$(curl -s --max-time 10 https://ipinfo.io/country | tr -d '[:space:]')
+          echo "País de la IP de este servidor: ${pais:-desconocido}"
+          if [ "$pais" = "US" ] || [ -z "$pais" ]; then
+            echo "::error::FTMO no corre: la IP es de EE. UU. (o no se pudo verificar)."
+            echo "SALTAR=1" >> $GITHUB_ENV
+          fi
+
+      - uses: actions/checkout@v5
+        if: env.SALTAR != '1'
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        if: env.SALTAR != '1'
+        with:
+          python-version: '3.12'
+
+      - name: Instalar librerias
+        if: env.SALTAR != '1'
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check -q MetaTrader5 pandas numpy tzdata
+
+      - name: MetaTrader 5 de FTMO (se instala una sola vez en el servidor)
+        if: env.SALTAR != '1'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $buscar = { Get-ChildItem 'C:\Program Files', 'C:\Program Files (x86)' -Filter terminal64.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+                      Where-Object { $_.DirectoryName -match 'FTMO' } | Select-Object -First 1 }
+          $exe = & $buscar
+          if (-not $exe) {
+            $inst = Join-Path $env:RUNNER_TEMP 'mt5setup.exe'
+            Invoke-WebRequest -Uri $env:INSTALADOR -OutFile $inst
+            Start-Process -FilePath $inst -ArgumentList '/auto'
+            $t0 = Get-Date
+            while (-not $exe -and ((Get-Date) - $t0).TotalMinutes -lt 8) { Start-Sleep -Seconds 10; $exe = & $buscar }
+            if (-not $exe) { throw 'No se instalo MetaTrader 5 de FTMO' }
+            Start-Sleep -Seconds 30
+          }
+          Get-Process -Name terminal64, mt5setup -ErrorAction SilentlyContinue | Stop-Process -Force
+          Write-Host "MetaTrader 5 de FTMO en $($exe.FullName)"
+          "MT5_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
+
+      - name: Abrir MetaTrader con la cuenta y Algo Trading activado
+        if: env.SALTAR != '1'
+        shell: pwsh
+        run: |
+          $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
+          $txt = "[Common]`r`nLogin=$env:MT5_LOGIN`r`nPassword=$env:MT5_PASSWORD`r`nServer=$env:MT5_SERVER`r`n" +
+                 "[Experts]`r`nAllowLiveTrading=1`r`nAllowDllImport=0`r`nEnabled=1`r`nAccount=0`r`nProfile=0`r`n"
+          try {
+            [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
+            Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
+            Start-Sleep -Seconds 60
+          } finally {
+            if (Test-Path $ini) { Remove-Item $ini -Force }
+          }
+
+      - name: Contexto del día (lo subió el flujo de Tickmill; si no está, bajarlo aquí)
+        if: env.SALTAR != '1'
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path contexto | Out-Null
+          $hoy = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+          $ok = (Test-Path contexto/hoy.json) -and ((Get-Content contexto/hoy.json -Raw) -match $hoy)
+          if (-not $ok) { python contexto.py }
+          Get-Content contexto/hoy.json -TotalCount 3
+
+      - name: Correr el bot (un tramo del dia)
+        if: env.SALTAR != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONIOENCODING: utf-8
+          PRUEBA: ${{ inputs.prueba }}
+        shell: bash
+        run: if [ "$PRUEBA" = "true" ]; then python bot_nasdaq.py --prueba; else python bot_nasdaq.py; fi
+
+      - name: Cerrar MetaTrader al terminar (no deja la sesión abierta entre tramos)
+        if: always() && env.SALTAR != '1'
+        shell: pwsh
+        run: Get-Process -Name terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      - name: Guardar la bitacora en el repositorio
+        if: always() && inputs.prueba != true && env.SALTAR != '1'
+        shell: bash
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          for f in bitacora_nasdaq_ftmo.csv estado_nasdaq_ftmo.json; do
+            if [ -e "$f" ]; then git add "$f"; fi
+          done
+          git diff --cached --quiet && exit 0
+          git commit -m "Bitacora y estado Nasdaq (ftmo) $(date -u +%Y-%m-%d)"
+          git checkout -q -- .
+          git clean -fdq contexto/ 2>/dev/null || true
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull -q --rebase -X theirs && git push; then ok=1; break; fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 20 + 5))
+          done
+          if [ "$ok" != 1 ]; then echo "::error::No pude guardar la bitacora y el estado FTMO en el repositorio (5 intentos)"; exit 1; fi
