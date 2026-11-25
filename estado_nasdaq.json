@@ -52,18 +52,23 @@
   "etapa": "reto"
  },
  "dia": {
-  "fecha": "2026-11-24",
-  "eq_inicio": 54340.78,
+  "fecha": "2026-11-25",
+  "eq_inicio": 53112.74,
   "min_eq": 53112.74,
   "cerrado": false,
   "quemado": false,
-  "meta": 4200.32,
-  "piso": 49340.78,
+  "meta": 5428.360000000001,
+  "piso": 48112.74,
   "obj": 58491.1,
-  "salidas_srv": [
-   319422991
-  ],
-  "resumido": "2026-11-24"
+  "sombra_50k": {
+   "eq_inicio": 52310.82,
+   "min_eq": 52310.82,
+   "fijo": null,
+   "quemado": false,
+   "meta": 2714.1800000000003,
+   "piso": 49810.82,
+   "obj": 55000.0
+  }
  },
  "ftmo_50k": {
   "fase": 1,
