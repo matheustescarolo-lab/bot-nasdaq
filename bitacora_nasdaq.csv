@@ -78,3 +78,8 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-25 15:00:10,entrada,Rango 30 min,compra,6.0,25413.78,"se llenó la orden pendiente del rango de 30 min (24,966.91–25,413.77) · deslizamiento +0.01 pts · stop 24,966.91 · posición 383369701"
 2026-11-25 15:20:01,salida,Rango 30 min,venta,6.0,25109.90,"sacudida en contra: la vela de las 10:15 NY se movió -0.64% · entró a 25413.78 · resultado aprox. -1,823.28 USD · posición 383369701"
 2026-11-25 17:50:00,fin,,,,,termina el tramo de la mañana; el de la tarde sigue con las posiciones abiertas
+2026-11-25 17:53:11,sombra,,,,,"fondos apalancados recortaron fuerte (COT): sería ×0.5; en sombra, no cambia el tamaño"
+2026-11-25 17:53:11,tamaño,,,,,volatilidad 14 días 2.91% vs normal 1.46% → peso 0.50 · hoy: rango 30 min 3 MNQ (6 lotes) · zona de ruido 3 MNQ (6 lotes)
+2026-11-25 17:53:11,inicio,,,,,"tramo de la tarde · USTEC · 6 lotes por estrategia (≈3 MNQ) · equity 51,289.46 · FTMO fase 1 · meta del día +5,428 · freno en equity 48,513 · cuenta demo · trabaja hasta las 15:58 NY"
+2026-11-25 17:53:11,filtro,,,,,ayer el Nasdaq cerró -1.94%: hoy no opera la zona de ruido
+2026-11-25 17:53:11,contexto,,,,,"07:30 Core PCE Price Index m/m, 07:30 Prelim GDP q/q, 07:30 Prelim GDP Price Index q/q · reportaron ayer: [] · hoy: [] / [] · VIX 30.86"
