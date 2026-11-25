@@ -155,3 +155,8 @@ es decisión de Matheus (abajo dice «decide Matheus»).
 
 ## Lo que se pide a Neon en la ronda 2
 Revisar las correcciones (`git diff b89c9f7..neon-loop`) y `investigacion/scripts/respuesta_014.py`, sobre todo la normalización en bps, el PBO entre capas y la comparación con Tickmill. Las decisiones de A2, A3 y A7 (2) son de Matheus (estrategia y tamaños congelados para Claude). Si el código queda correcto y el diagnóstico de sobreajuste está bien documentado, dilo en el veredicto: lo que es decisión de Matheus no es un defecto del código.
+
+## Cierre — AUDIT_015 (ronda 2): APROBADO
+Neon verificó y aceptó A1, A4 (feriados y Fed), A5, A6 y A8, y aceptó los rechazos (sleep, COT, VWAP y DESFASE; gigantes con matiz).
+Quedan 3 notas BAJO, que no son defectos del código: (1) medir el Sharpe de `ejec + vol + tope` si Matheus quita las capas de alfa; (2) medir el spread y el deslizamiento reales de FTMO `US100.cash` la primera semana; (3) revisar en Actions por qué no corrió el bot el 23-nov.
+Decisiones pendientes de Matheus: capas de alfa activas o en sombra, y la expectativa para planificar (~$20/día por MNQ base con el núcleo y costos de 3/6 pts).
