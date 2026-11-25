@@ -23,11 +23,12 @@ jobs:
           hoy=$(date -u +%Y-%m-%d)
           for y in 2019 2020 2021 2022 2023 2024 2025 2026; do
             hasta="$((y+1))-01-01"; [ "$y" = "2026" ] && hasta=$hoy
-            (dukascopy-node -i usatechidxusd -from ${y}-01-01 -to $hasta -t m5 -f csv -v true -dir tmp_m5 -fn m5_$y -r 3 || echo "fallo $y") &
+            dukascopy-node -i usatechidxusd -from ${y}-01-01 -to $hasta -t m5 -f csv -v true -dir tmp_m5 -fn m5_$y -bs 15 -bp 300 -r 3 || echo "fallo $y"
           done
-          wait; ls -la tmp_m5
+          ls -la tmp_m5
       - name: Filtrar madrugada
         run: |
+          pip install -q pandas
           python3 - <<'PY'
           import glob, pandas as pd
           d = pd.concat(pd.read_csv(f) for f in sorted(glob.glob('tmp_m5/*.csv')))
