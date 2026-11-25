@@ -3,6 +3,11 @@ name: Exportar historia USTEC
 # Baja la historia de velas de 5 min de USTEC (no opera).
 on:
   workflow_dispatch:
+    inputs:
+      madrugada:
+        description: 'Exportar 2:00–9:30 NY (estudio de Londres) en vez del horario de bolsa'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -66,6 +71,7 @@ jobs:
           MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
           MT5_SERVER: ${{ secrets.MT5_SERVER }}
           PYTHONIOENCODING: utf-8
+          MADRUGADA: ${{ inputs.madrugada }}
         run: python exportar_historia.py
 
       - name: Guardar en el repositorio
@@ -73,5 +79,5 @@ jobs:
         run: |
           git config user.name "bot-nasdaq"
           git config user.email "bot-nasdaq@users.noreply.github.com"
-          git add historia_ustec_m5.csv
+          git add historia_ustec_m5.csv extra/ustec_m5_madrugada.csv 2>/dev/null || git add historia_ustec_m5.csv
           git diff --cached --quiet || (git commit -m "Historia USTEC 5 min" && git pull -q --rebase && git push)

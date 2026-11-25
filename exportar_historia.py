@@ -18,8 +18,13 @@ while desde < fin:
     desde = hasta
 df = pd.concat(partes).drop_duplicates('time').sort_values('time')
 df['ny'] = [b.a_ny(t) for t in df['time']]
-df = df[(df.ny.dt.time >= dt.time(9, 30)) & (df.ny.dt.time < dt.time(16, 0))]
+if os.environ.get('MADRUGADA') == 'true':      # estudio de Londres: solo 2:00–9:30 NY
+    df = df[(df.ny.dt.time >= dt.time(2, 0)) & (df.ny.dt.time < dt.time(9, 30)) & (df.ny.dt.weekday < 5)]
+    destino = os.path.join(b.HERE, 'extra', 'ustec_m5_madrugada.csv')
+else:
+    df = df[(df.ny.dt.time >= dt.time(9, 30)) & (df.ny.dt.time < dt.time(16, 0))]
+    destino = os.path.join(b.HERE, 'historia_ustec_m5.csv')
 out = df[['ny', 'open', 'high', 'low', 'close', 'tick_volume', 'spread']]
-out.to_csv(os.path.join(b.HERE, 'historia_ustec_m5.csv'), index=False)
+out.to_csv(destino, index=False)
 print(f'{len(out)} velas · del {out.ny.iloc[0]} al {out.ny.iloc[-1]} · {out.ny.dt.date.nunique()} días')
 mt5.shutdown()
