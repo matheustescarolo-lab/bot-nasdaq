@@ -68,6 +68,12 @@ def id_cuenta(login):
     return hashlib.sha256(f'mt5:{login}'.encode()).hexdigest()[:12]
 
 
+def ftmo_estado_es_de(f0, login, etapa):
+    """True si el seguimiento FTMO guardado es de esta cuenta y esta etapa; si no, se reinicia.
+    AUDIT_014 A1: un estado sin login (de antes del identificador) NO se adopta: podría ser de otra cuenta."""
+    return bool(f0) and f0.get('login') == id_cuenta(login) and (f0.get('etapa') or 'reto') == etapa
+
+
 def cuenta_txt(login):
     s = str(login)
     return f'…{s[-3:]}' if len(s) > 3 else s
@@ -1560,11 +1566,11 @@ def main():
     cargar_salidas_prot(hoy)
     if MODO == 'ftmo':
         f0 = est.get('ftmo') or {}
-        if f0 and f0.get('login') is None:            # estado de antes de este cambio: es la misma cuenta
-            f0['login'], f0['etapa'] = id_cuenta(acc.login), ETAPA
+        # AUDIT_014 A1: un estado sin login NO se adopta (podría ser de otra cuenta, p. ej. la prueba gratis del 18-nov al
+        # pasar a la cuenta pagada): cae en «cuenta nueva» y se reinicia el seguimiento, sin heredar días ni cierre previo.
         if f0 and f0.get('login') == acc.login:       # estado viejo con el login a la vista: se guarda como identificador
             f0['login'] = id_cuenta(acc.login)
-        if not f0 or f0.get('login') != id_cuenta(acc.login) or (f0.get('etapa') or 'reto') != ETAPA:
+        if not ftmo_estado_es_de(f0, acc.login, ETAPA):
             base_ini = FTMO_INICIAL if (CUENTA == 'ftmo' or ETAPA in ('fase1', 'fase2', 'fondeada')) else acc.balance   # cuenta FTMO: el límite fijo es sobre el capital inicial
             if f0:
                 log('aviso', detalle=f"cuenta o etapa nueva (cuenta {cuenta_txt(acc.login)}, etapa {ETAPA}) → reinicio el seguimiento FTMO con base {base_ini:,.2f}")

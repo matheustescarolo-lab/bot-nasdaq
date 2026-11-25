@@ -7,7 +7,7 @@ on:
     workflows: ["Bot Nasdaq (demo)", "Bot Nasdaq FTMO (servidor propio)"]
     types: [completed]
   schedule:
-    - cron: '*/15 13-21 * * 1-5'     # cada 15 min, 13:00–21:59 UTC (cubre 9:30–16:00 NY con y sin horario de verano)
+    - cron: '*/15 12-22 * * 1-5'     # cada 15 min, 12:00–22:59 UTC (cubre 9:30–16:00 NY con y sin horario de verano, y limpia la cola FTMO antes de las 9:10 ET; AUDIT_014 A6)
   workflow_dispatch:
 
 permissions:

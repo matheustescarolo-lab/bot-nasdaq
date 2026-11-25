@@ -60,10 +60,11 @@ jobs:
           $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
           $txt = "[Common]`r`nLogin=$env:MT5_LOGIN`r`nPassword=$env:MT5_PASSWORD`r`nServer=$env:MT5_SERVER`r`n" +
                  "[Experts]`r`nAllowLiveTrading=1`r`nAllowDllImport=0`r`nEnabled=1`r`nAccount=0`r`nProfile=0`r`n"
-          [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
-          Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
-          Start-Sleep -Seconds 60
-          Remove-Item $ini -Force
+          try {
+            [System.IO.File]::WriteAllText($ini, $txt, [System.Text.Encoding]::Unicode)
+            Start-Process -FilePath $env:MT5_PATH -ArgumentList "/config:`"$ini`""
+            Start-Sleep -Seconds 60
+          } finally { Remove-Item $ini -Force -ErrorAction SilentlyContinue }   # AUDIT_014 A8: la contraseña no queda en disco si algo falla
 
       - name: Exportar
         env:

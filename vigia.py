@@ -68,6 +68,8 @@ def vm_apagada(ahora, corridas, feriados, medios):
     hoy = str(ahora.date())
     if ahora.weekday() >= 5 or hoy in feriados or not (INICIO <= ahora.time() < (FIN_MEDIO if hoy in medios else FIN)):
         return False
+    if any(c['status'] == 'in_progress' for c in corridas):       # AUDIT_014 A6: si algo corre, la VM está prendida
+        return False
     return any(c['status'] == 'queued' and (ahora - _hora(c)).total_seconds() >= 900 for c in corridas)
 
 
@@ -87,9 +89,11 @@ def avisar_issue(texto, marca):
 
 def vigilar_ftmo(ahora, feriados, medios):
     corridas = json.loads(gh('api', f'repos/{REPO}/actions/workflows/{FLUJO_FTMO}/runs?per_page=30'))['workflow_runs']
-    for i in cola_vieja(ahora, corridas, medios):
+    viejas = cola_vieja(ahora, corridas, medios)
+    for i in viejas:
         gh('run', 'cancel', str(i), '--repo', REPO)
         print(f'FTMO: cancelé la corrida {i} que seguía en espera fuera de horario')
+    corridas = [c for c in corridas if c['id'] not in viejas]     # AUDIT_014 A6: las canceladas ya no cuentan como «en espera»
     if vm_apagada(ahora, corridas, feriados, medios):
         avisar_issue('⚠️ El servidor de FTMO (VM de Azure) no tomó la corrida en 15 min: ¿no prendió o el runner no conecta? '
                      'Revisa la VM en el portal o la app de Azure (o entra por Tailscale).', '<!-- vigia-vm-apagada -->')

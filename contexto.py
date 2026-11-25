@@ -121,9 +121,22 @@ def fondos(hoy):
                 lectura='recortaron fuerte' if cambio < -0.0259 else 'aumentaron fuerte' if cambio > 0.0233 else 'normal')
 
 
-def anterior_habil(d):
+def feriados_bolsa():
+    """Feriados de la bolsa de EE. UU. (los mismos FERIADOS de bot_nasdaq.py, leídos como texto: aquí no se importa MetaTrader)."""
+    try:
+        src = open(os.path.join(HERE, 'bot_nasdaq.py'), encoding='utf-8').read()
+        m = re.search(r"FERIADOS\s*=\s*\{([^}]*)\}", src, re.S)
+        return set(re.findall(r"'(\d{4}-\d\d-\d\d)'", m.group(1))) if m else set()
+    except OSError:
+        return set()
+
+
+def anterior_habil(d, feriados=None):
+    """Día hábil de bolsa anterior a d. AUDIT_014 A4: salta también los feriados (el viernes después de Thanksgiving mira
+    los reportes del miércoles, no los del jueves feriado)."""
+    feriados = feriados_bolsa() if feriados is None else feriados
     d -= dt.timedelta(days=1)
-    while d.weekday() >= 5:
+    while d.weekday() >= 5 or str(d) in feriados:
         d -= dt.timedelta(days=1)
     return d
 

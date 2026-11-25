@@ -16,6 +16,8 @@ while desde < fin:
     if r is not None and len(r):
         partes.append(pd.DataFrame(r))
     desde = hasta
+if not partes:                                   # AUDIT_014 A8: sin velas no se pisa el CSV con uno vacío
+    print('El servidor no devolvió velas de 5 min: no escribo nada'); mt5.shutdown(); sys.exit(1)
 df = pd.concat(partes).drop_duplicates('time').sort_values('time')
 df['ny'] = [b.a_ny(t) for t in df['time']]
 if os.environ.get('MADRUGADA') == 'true':      # estudio de Londres: solo 2:00–9:30 NY
@@ -25,6 +27,9 @@ else:
     df = df[(df.ny.dt.time >= dt.time(9, 30)) & (df.ny.dt.time < dt.time(16, 0))]
     destino = os.path.join(b.HERE, 'historia_ustec_m5.csv')
 out = df[['ny', 'open', 'high', 'low', 'close', 'tick_volume', 'spread']]
+if out.empty:
+    print('Ninguna vela en el horario pedido: no escribo nada'); mt5.shutdown(); sys.exit(1)
+os.makedirs(os.path.dirname(destino), exist_ok=True)
 out.to_csv(destino, index=False)
 print(f'{len(out)} velas · del {out.ny.iloc[0]} al {out.ny.iloc[-1]} · {out.ny.dt.date.nunique()} días')
 mt5.shutdown()
