@@ -1,62 +1,70 @@
-# HANDOFF para Neon — AUDIT_012: correcciones de AUDIT_011
+# HANDOFF para Neon — AUDIT_013: servidor propio en Azure + correcciones de AUDIT_012
 
-Audita `git diff 06d938d..5139f00 -- '*.py' .github/` (rama audit-011, ya en main). Son las correcciones de tu AUDIT_011 (APROBADO CON CAMBIOS). Claude verificó los 3 hallazgos: los 3 son reales. 64 pruebas; todas pasan también corridas una por una, y las nuevas fallan con el código anterior. Reglas de las estrategias: sin cambios.
+Audita `git diff eecc6c7..HEAD -- '*.py' .github/ infra/` (todo ya en main). Son dos bloques:
+1. Correcciones de tu AUDIT_012 (APROBADO).
+2. Paso de la cuenta FTMO a un servidor propio en Azure (México), porque FTMO prohíbe entrar a MetaTrader desde IP de EE. UU. y los runners de GitHub están en EE. UU.
 
-## Qué se hizo
-| # | Veredicto de Claude | Cambio |
-|---|---|---|
-| A1 MEDIO | Real | `lotes_pendientes_otras(sym, excluir)`. La reserva frente a la pendiente de la otra estrategia usa el margen con el colchón de cuando se llene. En `asegurar_tope`: `margen_ftmo(sym, lp, solo_realizado=True)`. En `tope_stop`: `margen_ftmo(sym, lotes + lp, solo_realizado=True)`. Con 24 + 24 lotes, ruido $3,060 + pendiente $500 = $3,560 = margen proyectado (antes $4,280). También `riesgo_abierto(sym, excluir=clave)` en `tope_stop` (tu nota). Prueba: `test_a1_pendiente_con_el_colchon_de_cuando_se_llene`. |
-| A2 BAJO | Real (las 4 fallaban solas) | `setUp` deja `positions_get`, `orders_get` y `history_deals_get` en `[]`. Se corrieron las 64 pruebas una por una: todas pasan. |
-| A3 BAJO | Real | `opero` se evalúa antes del agotado. `historial_ftmo` guarda `etapa` y `dias + (1 if opero else 0)`. Los textos dicen «Cuenta FTMO fondeada» o «cuenta fondeada» en esa etapa e incluyen el umbral. |
+Las reglas de las estrategias no cambiaron, ni el bot de 100K en Tickmill.
 
-## Tu pregunta 1 (agotado en la fondeada)
-- Tenías razón en la lógica: en la fondeada no hay meta y toda ganancia se cobra.
-- Ahora: `AGOTADO = 0.02` (reto/fase1/fase2) y `AGOTADO_FONDEADA = 0.008`.
-- Se midió con `investigacion/scripts/freno_v4.py`, que además corrige tus dos notas sobre el simulador:
-  - Solo cuentan días con operaciones.
-  - Si el deslizamiento del freno llega al límite, es quema.
-- Y modela lo que hace el bot al lograr la meta antes de los 4 días: sigue con 1 MNQ y meta de $50.
+## Bloque 1: correcciones de AUDIT_012 (merge f9d19f7)
+- **A1:** `lotes_relleno` respeta `volume_min` y `volume_max` (100K sin cambios).
+- **A2:** `s50_dia(e, hoy)` crea `ftmo_50k` si no existe.
+- **A3:** `s50_intradia(est, R, colchon)` usa `max(0.4% × 50K, colchon_freno(sym) × 0.5)`.
+- **Pregunta 2:** `--prueba` imprime los MNQ y lotes de `lotes_del_dia`.
+- Prueba: `test_audit012_relleno_minimo_sombra_sin_historial_y_colchon`. 69 pruebas, todas también aisladas.
+- **Tu pregunta 1:** en el servidor de FTMO, US100.cash = 2 lotes por MNQ, confirmado en vivo el 24-nov.
 
-| Agotado | No cobra (pruebas / mitad) | Mediana 12 m |
-|---|---|---|
-| 0.8% en todo (antes) | 14% / 26% | $24.6k / $12.3k |
-| 2% en todo | 14% / 25% | $24.9k / $14.3k |
-| **2% en reto y fases, 0.8% en la fondeada (ahora)** | **14% / 25%** | **$25.0k / $14.3k** |
+## Bloque 2: servidor propio
+**Infraestructura** (fuera del repo, para contexto):
+- VM Windows Server 2022, Standard_B2s_v2, región Mexico Central (IP de México).
+- Runner de GitHub `azure-mx` con etiquetas `self-hosted, ftmo-mx`.
+- Logic Apps con identidad administrada: encienden la VM lun–vie a las 9:10 ET y la apagan (*deallocate*) a las 16:30 ET.
+- El repo es público: GitHub pide aprobación para workflows de pull requests de colaboradores externos.
 
-Mejora en las dos mitades de años.
+**Archivos:**
+- `.github/workflows/bot_ftmo.yml` (nuevo):
+  - Flujo propio con `concurrency: bot-ftmo` y `runs-on: [self-hosted, ftmo-mx]`.
+  - Guardia de IP (falla en rojo si es EE. UU. o desconocida).
+  - Instala MT5 de FTMO solo si no existe (busca `terminal64.exe` en una carpeta con «FTMO»).
+  - Abre MT5 con un .ini temporal que se borra en `finally`.
+  - Contexto del repo o `contexto.py`.
+  - Cierra `terminal64` al terminar.
+  - Guarda `bitacora_nasdaq_ftmo.csv` y `estado_nasdaq_ftmo.json` con el mismo bucle de reintentos.
+  - Variables opcionales `vars.FTMO_MNQ`, `vars.FTMO_ETAPA`, `vars.FTMO_INICIAL` (por defecto 6 / reto / 100000).
+- `.github/workflows/bot_nasdaq.yml`:
+  - Quita la pierna `ftmo` de la matriz.
+  - Agrega el trabajo `lanzar_ftmo` (`needs: contexto`, `if: always()`, `continue-on-error`), que hace `gh workflow run bot_ftmo.yml -f prueba=…`.
+  - `permissions: actions: write`.
+  - **Objetivo:** si la VM está apagada o caída, solo espera el flujo FTMO; el de Tickmill no se bloquea por la concurrencia `bot-nasdaq`.
+- `infra/preparar_vm.ps1` (se corre una vez dentro de la VM):
+  - Instala Git para Windows (bash en el PATH) y PowerShell 7.
+  - Energía siempre encendida; Windows Update sin reinicios con sesión abierta y horario activo 6–22.
+  - Registra el runner (token pedido con `Read-Host`).
+  - Tarea programada al iniciar sesión que corre `run.cmd`, interactiva y elevada: MT5 por Python necesita una sesión de Windows.
+  - Inicio de sesión automático con Autologon de Sysinternals (contraseña pedida con `Read-Host -AsSecureString`, guardada como secreto LSA).
+  - Solo ASCII.
 
-## Tu pregunta 2 (vigía + workflow_run)
-- No se verificó en GitHub si una corrida lanzada por el vigía con `github.token` dispara otra vez `workflow_run` al terminar.
-- En el peor caso, una segunda caída queda cubierta por el `schedule` cada 15 min: hasta 15 min sin bot.
-- Se acepta; se revisará al montar el runner propio en México (enero).
-- `c1e.py` (M0 fijo, sin pérdidas realizadas intradía): de acuerdo, es una cota del día limpio. La garantía en el bot la dan `_reserva` + el margen realizado, cubiertos por pruebas.
+**Verificado en vivo (24-nov, prueba gratis FTMO …731):**
+- IP MX, conexión OK, servidor a +7 h de NY.
+- Apagar → encender con los Logic Apps → el runner volvió solo → prueba OK.
 
 ## Qué revisar
-1. Que con A1 la suma posición + pendiente nunca pase del margen proyectado, en los dos órdenes de entrada.
-2. Que `lotes_pendientes_otras` no cuente las pendientes de la propia estrategia (el par OCO del ORB).
-3. Que `setUp` no esconda un error real de alguna prueba que antes dependía del estado de otra.
-
----
-
-# Parte 2 de AUDIT_012: sombra FTMO 50K + soporte real 50K (merge de la rama sombra-50k)
-Audita también `git diff a0e2596..HEAD -- '*.py'`. Regla innegociable de Matheus: nada del comportamiento de 100K cambia. La sombra es 100% pasiva y el soporte de 50K deja idéntico el cálculo con `BOT_FTMO_INICIAL == 100000`.
-
-**Sombra 50K** (solo `CUENTA == 'tickmill'` y `MODO == 'ftmo'`):
-- `backfill_ftmo_50k`: reconstruye desde los `resumen` de la bitácora (19-nov →, sin duplicar fechas). Usa `Total del día × 0.5`, «hubo operaciones» y «tocó el freno».
-- `s50_dia`: arma `est['dia']['sombra_50k']`.
-- `s50_intradia`: congela `fijo` por meta o freno (0.4% × 50K). Nunca toca `est['dia']['cerrado']`, `quemado`, `meta_ok` ni MT5.
-- `s50_cierre`: en `resumen()`, cierre idempotente por fecha. Agrega la línea 🪩.
-- Todo va en try/except: un error de la sombra solo deja un aviso.
-- Reglas 50K: fase 1 +$5,000, fase 2 +$2,500, 4 días con operaciones, pérdida diaria $2,500, máxima $5,000, agotado 2%, `listo` recalculado cada cierre.
-
-**Soporte real 50K:**
-- `CONTRATOS` es float.
-- `lotes_del_dia()`: con 100K y MNQ enteros, exactamente la fórmula anterior (la prueba la compara contra la fórmula vieja con 8 pesos). Otro capital: lotes directos al paso del símbolo, con el mínimo y el máximo.
-- `ESCALA_FTMO = FTMO_INICIAL / 100000` en la meta de `ftmo_dia` ($50/$100 → $25/$50) y en `lotes_relleno()` (2 → 1 lote).
-- Ya escalaban: tope $4,500 (4.5%), `TOPE_MIN` (0.5%), freno (0.4%) y margen FTMO 1:15 (`eq_v` con `FTMO_INICIAL`).
-
-**Qué revisar:**
-1. Que con 100K no cambie ningún tamaño, meta ni orden.
-2. Que la sombra no pueda frenar ni cerrar el bot de 100K.
-3. Que el backfill no se duplique entre el arranque (`main`) y `resumen()`.
-4. Que el `estado_nasdaq.json` poblado (commit del backfill) solo agregue `ftmo_50k` / `historial_ftmo_50k`.
+1. **¿Puede el flujo FTMO operar dos veces a la vez o pisar el estado?**
+   - Concurrencia `bot-ftmo` + vigía (el vigía solo relanza `bot_nasdaq.yml`, que a su vez lanza `bot_ftmo.yml`).
+   - ¿Qué pasa si el relevo de las 12:40 encuentra todavía corriendo el tramo de la mañana?
+2. **Seguridad con repo público + runner propio:**
+   - ¿Algún disparador (`pull_request`, `workflow_run`, etc.) en cualquier workflow podría ejecutar código de un fork en `ftmo-mx`?
+   - ¿Queda la contraseña de FTMO en disco o en logs?
+3. **Robustez del runner persistente:**
+   - `_work` reutilizado entre corridas (checkout limpio, `git clean`).
+   - `pip` y `setup-python` en un runner propio.
+   - `Stop-Process terminal64` (hoy hay una sola cuenta).
+   - ¿Qué pasa si la VM se apaga a las 16:30 ET con un trabajo todavía corriendo?
+4. **`lanzar_ftmo`:**
+   - Que falle sin afectar al trabajo `operar` de Tickmill.
+   - Que `PRUEBA` llegue bien como texto `true`/`false`.
+5. **`preparar_vm.ps1`:** errores que dejen la VM a medias, o riesgos (Autologon, tarea elevada).
+6. **Huecos:**
+   - El vigía no detecta si solo cae el flujo FTMO.
+   - No hay aviso si la VM no prende.
+   - Propón la solución más simple.
