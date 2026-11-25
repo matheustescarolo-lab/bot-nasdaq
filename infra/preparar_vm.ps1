@@ -12,8 +12,13 @@ $repo = 'https://github.com/matheustescarolo-lab/bot-nasdaq'
 $tmp = 'C:\bot-instaladores'; New-Item -ItemType Directory -Force $tmp | Out-Null
 
 function Ultimo($proyecto, $patron) {
-    $r = Invoke-RestMethod "https://api.github.com/repos/$proyecto/releases/latest" -Headers @{ 'User-Agent' = 'preparar-vm' }
-    ($r.assets | Where-Object { $_.name -match $patron } | Select-Object -First 1).browser_download_url
+    # busca en las ultimas versiones estables (no solo la marcada como "latest") el primer archivo que coincida
+    $rs = Invoke-RestMethod "https://api.github.com/repos/$proyecto/releases?per_page=20" -Headers @{ 'User-Agent' = 'preparar-vm' }
+    foreach ($r in ($rs | Where-Object { -not $_.prerelease -and -not $_.draft })) {
+        $a = $r.assets | Where-Object { $_.name -match $patron } | Select-Object -First 1
+        if ($a) { return $a.browser_download_url }
+    }
+    return $null
 }
 
 Write-Host '1/7 Git para Windows (trae bash, que usa el flujo)...' -ForegroundColor Cyan
@@ -31,8 +36,13 @@ foreach ($p in 'C:\Program Files\Git\bin', 'C:\Program Files\Git\cmd') {
 Write-Host '2/7 PowerShell 7 (pwsh, que usa el flujo)...' -ForegroundColor Cyan
 if (-not (Test-Path 'C:\Program Files\PowerShell\7\pwsh.exe')) {
     $u = Ultimo 'PowerShell/PowerShell' 'win-x64\.msi$'
-    Invoke-WebRequest $u -OutFile "$tmp\pwsh.msi"
-    Start-Process msiexec.exe -ArgumentList '/i', "$tmp\pwsh.msi", '/qn', 'ADD_PATH=1' -Wait
+    if ($u) {
+        Invoke-WebRequest $u -OutFile "$tmp\pwsh.msi"
+        Start-Process msiexec.exe -ArgumentList '/i', "$tmp\pwsh.msi", '/qn', 'ADD_PATH=1' -Wait
+    } else {
+        Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -UseMSI -Quiet"   # instalador oficial de Microsoft
+    }
+    if (-not (Test-Path 'C:\Program Files\PowerShell\7\pwsh.exe')) { throw 'No se instalo PowerShell 7' }
 }
 
 Write-Host '3/7 Energia: nunca suspender ni apagar la pantalla...' -ForegroundColor Cyan
