@@ -1,0 +1,44 @@
+name: Datos Londres (Nasdaq 5 min de madrugada)
+
+# Baja velas de 5 min del Nasdaq (Dukascopy) y deja solo 2:00–9:30 NY para estudiar la sesión de Londres. No opera.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Bajar
+        run: |
+          mkdir -p tmp_m5
+          hoy=$(date -u +%Y-%m-%d)
+          for y in 2019 2020 2021 2022 2023 2024 2025 2026; do
+            hasta="$((y+1))-01-01"; [ "$y" = "2026" ] && hasta=$hoy
+            (npx --yes dukascopy-node@latest -i usatechidxusd -from ${y}-01-01 -to $hasta -t m5 -f csv -v true -dir tmp_m5 -fn m5_$y -r 3 || echo "fallo $y") &
+          done
+          wait; ls -la tmp_m5
+      - name: Filtrar madrugada
+        run: |
+          python3 - <<'PY'
+          import glob, pandas as pd
+          d = pd.concat(pd.read_csv(f) for f in sorted(glob.glob('tmp_m5/*.csv')))
+          d['ny'] = pd.to_datetime(d.timestamp, unit='ms', utc=True).dt.tz_convert('America/New_York').dt.tz_localize(None)
+          t = d.ny.dt.hour * 60 + d.ny.dt.minute
+          d = d[(t >= 120) & (t < 570) & (d.ny.dt.weekday < 5)].drop_duplicates('ny').sort_values('ny')
+          d[['ny', 'open', 'high', 'low', 'close', 'volume']].to_csv('extra/nas_m5_madrugada.csv', index=False)
+          print(len(d), d.ny.min(), d.ny.max(), d.ny.dt.date.nunique(), 'días')
+          PY
+      - name: Guardar
+        run: |
+          git config user.name "bot-nasdaq"
+          git config user.email "bot-nasdaq@users.noreply.github.com"
+          git add extra/nas_m5_madrugada.csv
+          git diff --cached --quiet || (git commit -m "Datos de madrugada (5 min) para el estudio de Londres" && git pull -q --rebase && git push)
