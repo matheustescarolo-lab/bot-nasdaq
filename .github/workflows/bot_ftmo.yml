@@ -1,5 +1,5 @@
 name: Bot Nasdaq FTMO (servidor propio)
-run-name: ${{ inputs.prueba == true && 'Bot FTMO (prueba)' || 'Bot FTMO' }}
+run-name: ${{ inputs.prueba == true && 'Bot FTMO (prueba)' || (inputs.origen == 'vigia' && 'Bot FTMO (relanzado por el vigia)' || 'Bot FTMO') }}
 # Cuenta FTMO en el servidor propio de Azure (México): FTMO prohíbe entrar a MetaTrader desde IP de EE. UU.
 # Lo lanza bot_nasdaq.yml al terminar su contexto (mismo cron-job.org). Flujo y concurrencia APARTE:
 # si la VM está apagada o caída, este trabajo espera solo, sin frenar el ensayo de Tickmill.
@@ -11,6 +11,10 @@ on:
         description: 'Solo probar la conexion, sin operar'
         type: boolean
         default: false
+      origen:
+        description: 'Quien lo lanza (vigia = relanzamiento automatico)'
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -30,25 +34,27 @@ jobs:
       BOT_MNQ: ${{ vars.FTMO_MNQ || '6' }}                  # 100K: 6 en el reto (3 la primera semana), 4 en la fondeada
       BOT_FTMO_ETAPA: ${{ vars.FTMO_ETAPA || 'reto' }}       # prueba gratis: reto · pagado: fase1 → fase2 → fondeada
       BOT_FTMO_INICIAL: ${{ vars.FTMO_INICIAL || '100000' }}
-      MT5_LOGIN: ${{ secrets.FTMO_LOGIN }}
-      MT5_PASSWORD: ${{ secrets.FTMO_PASSWORD }}
-      MT5_SERVER: ${{ secrets.FTMO_SERVER }}
+      HAY_CUENTA: ${{ secrets.FTMO_LOGIN != '' }}            # las credenciales solo van en los pasos que las usan (AUDIT_013 A5)
       INSTALADOR: https://download.terminal.free/cdn/web/ftmo.global.markets/mt5/ftmo5setup.exe
     steps:
       - name: ¿Hay cuenta configurada?
         shell: bash
         run: |
-          if [ -z "$MT5_LOGIN" ]; then echo "Sin secretos FTMO, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
+          if [ "$HAY_CUENTA" != "true" ]; then echo "Sin secretos FTMO, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
 
       - name: FTMO prohíbe entrar a MetaTrader desde EE. UU. (revisa el país de la IP)
         if: env.SALTAR != '1'
         shell: bash
         run: |
-          pais=$(curl -s --max-time 10 https://ipinfo.io/country | tr -d '[:space:]')
+          # AUDIT_013 A1: dos proveedores, código de 2 letras válido y fallo en ROJO si es EE. UU. o no se puede verificar
+          pais=$(curl -fsS --max-time 10 https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]' || true)
+          if ! [[ "$pais" =~ ^[A-Z]{2}$ ]]; then
+            pais=$(curl -fsS --max-time 10 https://api.country.is 2>/dev/null | python -c "import sys, json; print(json.load(sys.stdin).get('country', ''))" 2>/dev/null | tr -d '[:space:]' || true)
+          fi
           echo "País de la IP de este servidor: ${pais:-desconocido}"
-          if [ "$pais" = "US" ] || [ -z "$pais" ]; then
-            echo "::error::FTMO no corre: la IP es de EE. UU. (o no se pudo verificar)."
-            echo "SALTAR=1" >> $GITHUB_ENV
+          if ! [[ "$pais" =~ ^[A-Z]{2}$ ]] || [ "$pais" = "US" ]; then
+            echo "::error::FTMO no corre: la IP es de EE. UU. o no se pudo verificar (${pais:-sin respuesta}). No se abre MetaTrader."
+            exit 1
           fi
 
       - uses: actions/checkout@v5
@@ -64,7 +70,9 @@ jobs:
       - name: Instalar librerias
         if: env.SALTAR != '1'
         shell: pwsh
-        run: python -m pip install --disable-pip-version-check -q MetaTrader5 pandas numpy tzdata
+        run: |
+          python -c "import MetaTrader5, pandas, numpy, tzdata" 2>$null
+          if ($LASTEXITCODE -ne 0) { python -m pip install --disable-pip-version-check -q MetaTrader5 pandas numpy tzdata }
 
       - name: MetaTrader 5 de FTMO (se instala una sola vez en el servidor)
         if: env.SALTAR != '1'
@@ -83,12 +91,18 @@ jobs:
             if (-not $exe) { throw 'No se instalo MetaTrader 5 de FTMO' }
             Start-Sleep -Seconds 30
           }
+          $abiertos = Get-Process -Name terminal64, mt5setup -ErrorAction SilentlyContinue
+          $abiertos | ForEach-Object { [void]$_.CloseMainWindow() }; if ($abiertos) { Start-Sleep -Seconds 5 }
           Get-Process -Name terminal64, mt5setup -ErrorAction SilentlyContinue | Stop-Process -Force
           Write-Host "MetaTrader 5 de FTMO en $($exe.FullName)"
           "MT5_PATH=$($exe.FullName)" >> $env:GITHUB_ENV
 
       - name: Abrir MetaTrader con la cuenta y Algo Trading activado
         if: env.SALTAR != '1'
+        env:
+          MT5_LOGIN: ${{ secrets.FTMO_LOGIN }}
+          MT5_PASSWORD: ${{ secrets.FTMO_PASSWORD }}
+          MT5_SERVER: ${{ secrets.FTMO_SERVER }}
         shell: pwsh
         run: |
           $ini = Join-Path $env:RUNNER_TEMP 'inicio_mt5.ini'
@@ -109,14 +123,18 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path contexto | Out-Null
-          $hoy = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
-          $ok = (Test-Path contexto/hoy.json) -and ((Get-Content contexto/hoy.json -Raw) -match $hoy)
+          $hoy = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'Eastern Standard Time').ToString('yyyy-MM-dd')   # fecha de Nueva York
+          $ok = $false
+          if (Test-Path contexto/hoy.json) { try { $ok = ((Get-Content contexto/hoy.json -Raw | ConvertFrom-Json).fecha -eq $hoy) } catch {} }
           if (-not $ok) { python contexto.py }
           Get-Content contexto/hoy.json -TotalCount 3
 
       - name: Correr el bot (un tramo del dia)
         if: env.SALTAR != '1'
         env:
+          MT5_LOGIN: ${{ secrets.FTMO_LOGIN }}
+          MT5_PASSWORD: ${{ secrets.FTMO_PASSWORD }}
+          MT5_SERVER: ${{ secrets.FTMO_SERVER }}
           GH_TOKEN: ${{ github.token }}
           PYTHONIOENCODING: utf-8
           PRUEBA: ${{ inputs.prueba }}
@@ -126,7 +144,10 @@ jobs:
       - name: Cerrar MetaTrader al terminar (no deja la sesión abierta entre tramos)
         if: always() && env.SALTAR != '1'
         shell: pwsh
-        run: Get-Process -Name terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+        run: |
+          $abiertos = Get-Process -Name terminal64 -ErrorAction SilentlyContinue
+          $abiertos | ForEach-Object { [void]$_.CloseMainWindow() }; if ($abiertos) { Start-Sleep -Seconds 5 }
+          Get-Process -Name terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
 
       - name: Guardar la bitacora en el repositorio
         if: always() && inputs.prueba != true && env.SALTAR != '1'

@@ -59,8 +59,9 @@ jobs:
   lanzar_ftmo:
     # La cuenta FTMO corre en su propio flujo (bot_ftmo.yml) en el servidor de Azure en México, con concurrencia aparte:
     # si la VM está caída, ese trabajo espera solo y este (Tickmill) sigue normal.
+    # Si el vigía relanza Tickmill no se lanza otro FTMO: al FTMO lo vigila el propio vigía (AUDIT_013 A2).
     needs: contexto
-    if: always()
+    if: always() && inputs.origen != 'vigia'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     continue-on-error: true
@@ -71,7 +72,7 @@ jobs:
         run: gh workflow run bot_ftmo.yml --repo "$GITHUB_REPOSITORY" --ref main -f prueba="$PRUEBA"
 
   operar:
-    # Dos cuentas a la vez con la misma llamada de cron-job.org: Tickmill (demo, 3 versiones de Lucid) y FTMO (reto 2-Step)
+    # Tickmill (demo, ensayo exacto del reto FTMO 100K). La cuenta FTMO corre en bot_ftmo.yml (servidor propio en México).
     needs: contexto
     if: always()
     runs-on: windows-latest
@@ -92,25 +93,14 @@ jobs:
       BOT_FTMO_ETAPA: ${{ matrix.etapa || 'reto' }}
       BOT_FTMO_INICIAL: ${{ matrix.ftmo_inicial || '100000' }}
       BOT_MODO: ${{ matrix.modo || '' }}
-      MT5_LOGIN: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_LOGIN || matrix.cuenta == 'tickmill' && secrets.MT5_LOGIN || '' }}
-      MT5_PASSWORD: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_PASSWORD || matrix.cuenta == 'tickmill' && secrets.MT5_PASSWORD || '' }}
-      MT5_SERVER: ${{ matrix.cuenta == 'ftmo' && secrets.FTMO_SERVER || matrix.cuenta == 'tickmill' && secrets.MT5_SERVER || '' }}
+      MT5_LOGIN: ${{ secrets.MT5_LOGIN }}
+      MT5_PASSWORD: ${{ secrets.MT5_PASSWORD }}
+      MT5_SERVER: ${{ secrets.MT5_SERVER }}
     steps:
       - name: ¿Hay cuenta configurada?
         shell: bash
         run: |
           if [ -z "$MT5_LOGIN" ]; then echo "Sin secretos para $BOT_CUENTA, no corre"; echo "SALTAR=1" >> $GITHUB_ENV; fi
-
-      - name: FTMO prohíbe entrar a MetaTrader desde EE. UU. (revisa el país de la IP)
-        if: env.SALTAR != '1' && matrix.cuenta == 'ftmo'
-        shell: bash
-        run: |
-          pais=$(curl -s --max-time 10 https://ipinfo.io/country | tr -d '[:space:]')
-          echo "País de la IP de este runner: ${pais:-desconocido}"
-          if [ "$pais" = "US" ] || [ -z "$pais" ]; then
-            echo "::warning::FTMO no corre: la IP es de EE. UU. (o no se pudo verificar). Regla FTMO: no entrar a MetaTrader desde EE. UU. Hace falta un servidor fuera de EE. UU."
-            echo "SALTAR=1" >> $GITHUB_ENV
-          fi
 
       - uses: actions/checkout@v5
         if: env.SALTAR != '1'

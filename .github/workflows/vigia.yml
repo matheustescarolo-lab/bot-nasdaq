@@ -4,7 +4,7 @@ name: Vigía del bot Nasdaq
 # lo vuelve a lanzar. Solo lanza si NO hay ninguna corrida activa o en espera: nunca cancela ni duplica un tramo.
 on:
   workflow_run:
-    workflows: ["Bot Nasdaq (demo)"]
+    workflows: ["Bot Nasdaq (demo)", "Bot Nasdaq FTMO (servidor propio)"]
     types: [completed]
   schedule:
     - cron: '*/15 13-21 * * 1-5'     # cada 15 min, 13:00–21:59 UTC (cubre 9:30–16:00 NY con y sin horario de verano)
@@ -13,6 +13,7 @@ on:
 permissions:
   actions: write
   contents: read
+  issues: write      # aviso si la VM de FTMO no prende (AUDIT_013 A2)
 
 concurrency:
   group: vigia-bot-nasdaq
