@@ -1,6 +1,6 @@
 {
  "fecha": "2026-11-25",
- "generado_ny": "2026-11-25 09:45",
+ "generado_ny": "2026-11-25 12:50",
  "errores": {},
  "calendario": [
   {
@@ -28,16 +28,28 @@
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Fed’s preferred inflation gauge accelerated to 3.8% in October, raising the 2027 stakes for the central bank",
+  "Nvidia leads tech sell-off as Huang comeback rally fizzles and AI concerns return",
   "U.S. proposes new tariffs on 14 trading partners, including China and the EU",
+  "Fed’s preferred inflation gauge accelerated to 3.8% in October, raising the 2027 stakes for the central bank",
   "Trump’s meddling in Huang scandal reignites voter angst over tech’s outsized political power",
+  "Investors led by U.S. billionaire Todd Boehly to buy Lukoil's oil and gas assets outside Russia, sources say",
   "Ukraine tells Putin to ‘stop complaining’ over oil refinery attacks as Russia promises retaliation",
   "Jensen Huang tells staff that Nvidia doesn't need a succession plan",
-  "Liesman: Nvidia whiplash tests Kevin Warsh’s push to read market signals",
-  "Our top 10 things to watch in the stock market Wednesday",
-  "Secondhand shopping is going mainstream this holiday season as consumers seek value"
+  "Liesman: Nvidia whiplash tests Kevin Warsh’s push to read market signals"
  ],
  "trump": [
+  {
+   "hora": "Wed, 25 Nov 2026 17:14:26 +0000",
+   "texto": "Stocks are down sharply because of the November Third Election results. I wasn’t on the Ballot, but if I was, the results, just like all three times before, would have been much different, and the Stock Market, and your 401-k’s, would be BOOMING. I told you so!!! President DJT",
+   "enlace": "https://www.trumpstruth.org/statuses/43729",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Wed, 25 Nov 2026 15:20:42 +0000",
+   "texto": "Early reports from Iowa are that the Army’s mitigation efforts have far exceeded expectations.",
+   "enlace": "https://www.trumpstruth.org/statuses/43728",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Wed, 25 Nov 2026 01:02:33 +0000",
    "texto": "https://  vimeo.com/1249782646/7e27022b5  4",
@@ -145,39 +157,27 @@
    "texto": "I hope the Board of Nvidia rehires Jensen Huang. It would be the best thing for the Company, and also, for the U.S.A. President DONALD J. TRUMP",
    "enlace": "https://www.trumpstruth.org/statuses/43709",
    "habla_de_mercado": true
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 21:53:08 +0000",
-   "texto": "It’s incredible that Somalians have been able to completely take over the once great State of Minnesota. They own it, “lock, stock, and barrel” and, almost 95% are on some form of welfare. MAKE AMERICA GREAT AGAIN! President DONALD J. TRUMP",
-   "enlace": "https://www.trumpstruth.org/statuses/43708",
-   "habla_de_mercado": true
-  },
-  {
-   "hora": "Sun, 22 Nov 2026 21:49:11 +0000",
-   "texto": "Isn’t it interesting that Oil prices have dropped precipitously after the Midterm Elections? I said that was going to happen. The whole thing is a Giant Hoax! President DONALD J. TRUMP",
-   "enlace": "https://www.trumpstruth.org/statuses/43707",
-   "habla_de_mercado": true
   }
  ],
  "nasdaq_futuro": {
-  "precio": 25222.5,
+  "precio": 25618.5,
   "cierre_anterior": 26275.75,
-  "cambio": -0.04008448854932778
+  "cambio": -0.02501355812869277
  },
  "sp_futuro": {
-  "precio": 7027.5,
+  "precio": 7121.0,
   "cierre_anterior": 7217.5,
-  "cambio": -0.026324904745410493
+  "cambio": -0.013370280568063775
  },
  "vix": {
-  "precio": 31.72,
+  "precio": 30.86,
   "cierre_anterior": 26.360000610351562,
-  "cambio": 0.2033383636396262
+  "cambio": 0.17071317471370961
  },
  "vix9d": {
-  "precio": 26.68,
+  "precio": 32.9,
   "cierre_anterior": 26.68000030517578,
-  "cambio": -1.1438372471417324e-08
+  "cambio": 0.23313341917831876
  },
  "dealers": {
   "fecha": "2026-11-24",
@@ -201,12 +201,12 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": -0.04008448854932778,
-  "vix": 31.72,
+  "gap_nasdaq_futuro": -0.02501355812869277,
+  "vix": 30.86,
   "vix9d_vix": 1.012,
   "dix_pct": 0.2,
   "gex_pct": 0.08,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 5
+  "trump_posts_de_mercado": 4
  }
 }
