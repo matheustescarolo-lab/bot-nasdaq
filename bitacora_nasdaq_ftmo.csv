@@ -13,3 +13,4 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-25 14:47:06,filtro,,,,,ayer el Nasdaq cerró -1.94%: hoy no opera la zona de ruido
 2026-11-25 14:47:06,contexto,,,,,"07:30 Core PCE Price Index m/m, 07:30 Prelim GDP q/q, 07:30 Prelim GDP Price Index q/q · reportaron ayer: [] · hoy: [] / [] · VIX 31.72"
 2026-11-25 15:00:09,entrada,Rango 30 min,compra,6.0,25412.08,"rompió el rango de 30 min (24,962.83–25,411.13) sin orden pendiente: entra a mercado · stop 24,962.83 · deslizamiento +0.00 pts · orden 592561151"
+2026-11-25 15:20:02,salida,Rango 30 min,venta,6.0,25104.63,"sacudida en contra: la vela de las 10:15 NY se movió -0.64% · entró a 25413.58 · resultado aprox. -1,853.70 USD · posición 592561151"
