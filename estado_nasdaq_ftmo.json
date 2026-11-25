@@ -12,11 +12,12 @@
  "dia": {
   "fecha": "2026-11-25",
   "eq_inicio": 97817.5,
-  "min_eq": 97817.5,
+  "min_eq": 95960.8,
   "cerrado": false,
   "quemado": false,
   "meta": 12232.5,
   "piso": 92817.5,
-  "obj": 110000.0
+  "obj": 110000.0,
+  "salidas_srv": []
  }
 }
