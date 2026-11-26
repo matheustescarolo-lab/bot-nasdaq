@@ -1,21 +1,33 @@
 {
  "fecha": "2026-11-26",
- "generado_ny": "2026-11-26 09:45",
+ "generado_ny": "2026-11-26 12:40",
  "errores": {},
  "calendario": [],
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Even the price of toys is on the rise. How Americans are scaling back holiday plans",
   "Semiconductor chips are the new oil. Here's why",
+  "Even the price of toys is on the rise. How Americans are scaling back holiday plans",
   "Spain’s Pablo Hernández de Cos set to lead European Central Bank",
+  "Microdrama apps chase profits as Hollywood moves into short-form, vertical video",
   "SpaceX, Musk pledge to donate a share each to active Trump Accounts",
   "Global stocks rally as investors shrug off U.S. tariffs and AI jitters to 'fish for bargains'",
   "Trump, NATO chief caution Russia as attacks on Ukraine’s energy infrastructure intensify",
-  "What is ‘texture-maxxing’? The food trend putting crunch on the menu",
-  "Switzerland’s biggest bank set for showdown with lawmakers as capital fight intensifies amid crisis planning"
+  "What is ‘texture-maxxing’? The food trend putting crunch on the menu"
  ],
  "trump": [
+  {
+   "hora": "Thu, 26 Nov 2026 15:45:00 +0000",
+   "texto": "HAPPY THANKSGIVING TO ALL AMERICAN PATRIOTS WHO HAVE WORKED SO HARD TO MAKE OUR COUNTRY GREAT! Additionally, I would like to wish a Happy Thanksgiving to even those who issued fake Economic Numbers, just prior to the Election, and corrected them yesterday, three weeks late, showing that the GDP was actually 4.3%, versus 3.4%, A RECORD SETTING ERROR, and one so grave that it should be immediately i",
+   "enlace": "https://www.trumpstruth.org/statuses/43746",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 14:53:57 +0000",
+   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117683175541431490 During my conversations in China with President Vladimir Putin, of Russia, I spent a lot of time talking about the fact that I would like to see President Putin pull back all Military aggression against territories throughout Europe, in the hopes that a Deal can be made between Russia and Ukraine, and made quickly. I rea",
+   "enlace": "https://www.trumpstruth.org/statuses/43745",
+   "habla_de_mercado": true
+  },
   {
    "hora": "Thu, 26 Nov 2026 14:25:11 +0000",
    "texto": "HAPPY THANKSGIVING TO ALL! President DONALD J. TRUMP",
@@ -123,34 +135,22 @@
    "texto": "Ilhan Omar’s legal reckoning is looming, and redactions can't hide it:   https://www.  foxnews.com/opinion/ilhan-omar  s-legal-reckoning-looming-redactions-cant-hide",
    "enlace": "https://www.trumpstruth.org/statuses/43726",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 24 Nov 2026 18:58:04 +0000",
-   "texto": "Judge Ana C. Reyes, who was appointed by Crooked Joe Biden, and is handling the East Potomac Golf Course, referred to as Trash Island because it has been in such bad shape for so many years, is doing everything in her power to stop the Department of the Interior from bringing an old, decrepit, and very unsafe Golf Course from being built into a Course that Washington and, indeed, the U.S.A., can b",
-   "enlace": "https://www.trumpstruth.org/statuses/43722",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 24 Nov 2026 17:40:10 +0000",
-   "texto": "I am pleased to nominate Jim O’Neill to serve as Judge on the United States District Court for the Middle District of North Carolina. Jim has the strong support of both North Carolina Senators, Ted Budd and Thom Tillis. Jim has served as the District Attorney of Forsyth County since 2009, and has been a prosecutor in that office since 1997. He has a deep track record of being tough on crime, and p",
-   "enlace": "https://www.trumpstruth.org/statuses/43721",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26289.75,
+  "precio": 26230.5,
   "cierre_anterior": 26100.25,
-  "cambio": 0.00726046685376569
+  "cambio": 0.004990373655424651
  },
  "sp_futuro": {
-  "precio": 7245.0,
+  "precio": 7235.5,
   "cierre_anterior": 7195.75,
-  "cambio": 0.00684431782649475
+  "cambio": 0.0055240940833130026
  },
  "vix": {
-  "precio": 27.12,
+  "precio": 26.8,
   "cierre_anterior": 28.290000915527344,
-  "cambio": -0.04135740111924746
+  "cambio": -0.05266881821518554
  },
  "vix9d": {
   "precio": 29.61,
@@ -179,12 +179,12 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.00726046685376569,
-  "vix": 27.12,
+  "gap_nasdaq_futuro": 0.004990373655424651,
+  "vix": 26.8,
   "vix9d_vix": 1.047,
   "dix_pct": 0.16,
   "gex_pct": 0.08,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 3
+  "trump_posts_de_mercado": 4
  }
 }
