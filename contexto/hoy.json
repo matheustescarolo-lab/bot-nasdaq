@@ -1,43 +1,93 @@
 {
- "fecha": "2026-11-25",
- "generado_ny": "2026-11-25 12:50",
+ "fecha": "2026-11-26",
+ "generado_ny": "2026-11-26 09:45",
  "errores": {},
- "calendario": [
-  {
-   "hora_mx": "07:30",
-   "evento": "Core PCE Price Index m/m",
-   "impacto": "High",
-   "estimado": "0.3%",
-   "anterior": "0.3%"
-  },
-  {
-   "hora_mx": "07:30",
-   "evento": "Prelim GDP q/q",
-   "impacto": "High",
-   "estimado": "3.5%",
-   "anterior": "3.4%"
-  },
-  {
-   "hora_mx": "07:30",
-   "evento": "Prelim GDP Price Index q/q",
-   "impacto": "Medium",
-   "estimado": "2.3%",
-   "anterior": "2.3%"
-  }
- ],
+ "calendario": [],
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Nvidia leads tech sell-off as Huang comeback rally fizzles and AI concerns return",
-  "U.S. proposes new tariffs on 14 trading partners, including China and the EU",
-  "Fed’s preferred inflation gauge accelerated to 3.8% in October, raising the 2027 stakes for the central bank",
-  "Trump’s meddling in Huang scandal reignites voter angst over tech’s outsized political power",
-  "Investors led by U.S. billionaire Todd Boehly to buy Lukoil's oil and gas assets outside Russia, sources say",
-  "Ukraine tells Putin to ‘stop complaining’ over oil refinery attacks as Russia promises retaliation",
-  "Jensen Huang tells staff that Nvidia doesn't need a succession plan",
-  "Liesman: Nvidia whiplash tests Kevin Warsh’s push to read market signals"
+  "Even the price of toys is on the rise. How Americans are scaling back holiday plans",
+  "Semiconductor chips are the new oil. Here's why",
+  "Spain’s Pablo Hernández de Cos set to lead European Central Bank",
+  "SpaceX, Musk pledge to donate a share each to active Trump Accounts",
+  "Global stocks rally as investors shrug off U.S. tariffs and AI jitters to 'fish for bargains'",
+  "Trump, NATO chief caution Russia as attacks on Ukraine’s energy infrastructure intensify",
+  "What is ‘texture-maxxing’? The food trend putting crunch on the menu",
+  "Switzerland’s biggest bank set for showdown with lawmakers as capital fight intensifies amid crisis planning"
  ],
  "trump": [
+  {
+   "hora": "Thu, 26 Nov 2026 14:25:11 +0000",
+   "texto": "HAPPY THANKSGIVING TO ALL! President DONALD J. TRUMP",
+   "enlace": "https://www.trumpstruth.org/statuses/43744",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 14:24:01 +0000",
+   "texto": "It was just revealed that the REAL Numbers on the Economy, published before the Election, were FAKE, and a correction was issued yesterday by the people in the Government Agency that does these numbers. The American Economy under The Trump Administration is doing FAR BETTER than the good numbers already released. Third Quarter GDP Growth has now been corrected to be 4.3%, instead of 3.4%, a major ",
+   "enlace": "https://www.trumpstruth.org/statuses/43743",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 14:19:11 +0000",
+   "texto": "A JOINT STATEMENT MADE BY PRESIDENT DONALD J. TRUMP AND SECRETARY GENERAL OF NATO, MARK RUTTE:   President Trump and Secretary General Rutte had an outstanding meeting on Wednesday evening, at what is often referred to as the Southern White House — Mar-a-Lago.  The meeting was very impactful, with the War between Russia and Ukraine, and the Conflict in Iran, being the primary subjects of discussio",
+   "enlace": "https://www.trumpstruth.org/statuses/43742",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 12:38:16 +0000",
+   "texto": "“U.S. Q3 GDP just got revised UP to a massive +4.3% — shattering expert predictions and nearly DOUBLING Q2’s 2.2% growth! The Trump Economy is ROARING, and the mainstream media can’t hide it anymore!”   View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43741",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 05:47:03 +0000",
+   "texto": "David E. Sanger, the mediocre reporter for the Failing New York Times, didn’t mention in his recent story on me the successful closing of the Border, best crime stats in years (lowest murder rate since 1900 - 126 years!), biggest Tax and Regulation Cuts, EVER, the most successful naval blockade in history, the destruction of Iran’s Navy and Air Force (and more!), the ONE DAY WIN against Venezuela,",
+   "enlace": "https://www.trumpstruth.org/statuses/43740",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 05:17:46 +0000",
+   "texto": "RT   @ WhiteHouse   America's Mayor. 🇺🇸  President Donald J. Trump presents Rudy Giuliani with the Presidential Medal of Freedom.  Reposted  The White House    America's Mayor. 🇺🇸  President Donald J. Trump presents Rudy Giuliani with the Presidential Medal of Freedom.   View video",
+   "enlace": "https://www.trumpstruth.org/statuses/43738",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 05:16:41 +0000",
+   "texto": "RT   @ MelaniaTrump     Reposted  Melania Trump       View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43736",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 05:13:05 +0000",
+   "texto": "RT   @ markkhalil   Where does   @ realDonaldTrump    find the strength, energy, mental acuity, and talent?! Oh wait, I know.☝🏽👍🏽🇺🇸  Reposted  Mark    Where does   @ realDonaldTrump    find the strength, energy, mental acuity, and talent?! Oh wait, I know.☝🏽👍🏽🇺🇸   View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43734",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 05:08:57 +0000",
+   "texto": "0.000% of Obama caused carcinogens were released into beautiful Iowa air after the Perfect detonation. WE ALL WORKED HARD! President DJT",
+   "enlace": "https://www.trumpstruth.org/statuses/43733",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Wed, 25 Nov 2026 20:37:06 +0000",
+   "texto": "Fake News CNN was hoping for a bad outcome in Iowa. Their pre-coverage was inaccurate and deplorable. When a PERFECT detonation was completed and there for all to see, they went CRAZY with anger. They want our Country to lose. “Another win for Trump!”",
+   "enlace": "https://www.trumpstruth.org/statuses/43732",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Wed, 25 Nov 2026 20:27:36 +0000",
+   "texto": "Rob Sands, the new future Governor of Iowa, is obviously unhappy that the Obama created (2009!) mess was so perfectly handled by the U.S. Army through a flawless detonation, that he’s now complaining about the lead up to the event. He hurt and delayed the process. Was absolutely no help. Just another politician. He should rejoice at this great success, not nitpick and issue phony complaints on “tr",
+   "enlace": "https://www.trumpstruth.org/statuses/43731",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Wed, 25 Nov 2026 20:03:33 +0000",
+   "texto": "Great job by the Army, and others, in Iowa!!! President DJT",
+   "enlace": "https://www.trumpstruth.org/statuses/43730",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Wed, 25 Nov 2026 17:14:26 +0000",
    "texto": "Stocks are down sharply because of the November Third Election results. I wasn’t on the Ballot, but if I was, the results, just like all three times before, would have been much different, and the Stock Market, and your 401-k’s, would be BOOMING. I told you so!!! President DJT",
@@ -85,105 +135,33 @@
    "texto": "I am pleased to nominate Jim O’Neill to serve as Judge on the United States District Court for the Middle District of North Carolina. Jim has the strong support of both North Carolina Senators, Ted Budd and Thom Tillis. Jim has served as the District Attorney of Forsyth County since 2009, and has been a prosecutor in that office since 1997. He has a deep track record of being tough on crime, and p",
    "enlace": "https://www.trumpstruth.org/statuses/43721",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 24 Nov 2026 17:34:33 +0000",
-   "texto": "I want to thank Uzbekistan's Highly Respected President, Shavkat Mirziyoyev, for the beautiful Uzbek Gazebos (or “Aywans”) gifted to me in honor of our Country’s 250 years of Independence. It was my Honor to do a flyover in Marine One during last week’s Gazebo Ceremony featuring Uzbek Ambassador Furqat Sidikov and Interior Secretary Doug Burgum — and the Gazebos look STUNNING!  Uzbek master crafts",
-   "enlace": "https://www.trumpstruth.org/statuses/43720",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Tue, 24 Nov 2026 17:08:51 +0000",
-   "texto": "I am proud to announce that the FIFA Women's World Cup 2031 will take place in the United States! After hosting the Most Successful World Cup in History, no Country is better positioned than the United States to be home to the largest Women's Sporting Event in History. The FIFA Women's World Cup 2031 will bring Generational Economic Impact to the United States, grow the sport of Soccer throughout ",
-   "enlace": "https://www.trumpstruth.org/statuses/43719",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 18:55:49 +0000",
-   "texto": "EXTREME CLIMATE SCIENCE “BITES THE DUST!”  Climate Change activists always described their Extreme Climate Science assumptions as “settled science,” and the scenarios of doom and destruction based on “Climate Change” have dominated their outlook. Well, their Climate Science has now been debunked, withdrawn, and taken down by the UN IPCC. That’s right, the same organization that published these pro",
-   "enlace": "https://www.trumpstruth.org/statuses/43718",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 18:00:54 +0000",
-   "texto": "Iowa is a very special place to me, a place that I won, by substantial margins, in all three Elections but, whether I won or lost, would never deter me from making a correct decision. As everyone knows, there is a Military “clean up” operation, without which, a very dangerous situation exists. In 2009, the Obama Administration improperly stored a vast number of explosives, and the Experts, who kno",
-   "enlace": "https://www.trumpstruth.org/statuses/43717",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 16:32:47 +0000",
-   "texto": "View image",
-   "enlace": "https://www.trumpstruth.org/statuses/43716",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 14:50:52 +0000",
-   "texto": "Congratulations to NVIDIA on having made, what I consider to be, an absolutely GREAT decision! President DONALD J. TRUMP",
-   "enlace": "https://www.trumpstruth.org/statuses/43715",
-   "habla_de_mercado": true
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 14:07:17 +0000",
-   "texto": "The NVIDIA Board of Directors has made the correct and proper decision to return Jensen Huang to the position of CEO. The Country needs Jensen’s leadership at NVIDIA in order to ensure the Success and Prosperity of not only the Company, but the American Economy. The United States Government has no reason to believe that Jensen’s return to NVIDIA poses any risk to National Security. The Attorney Ge",
-   "enlace": "https://www.trumpstruth.org/statuses/43714",
-   "habla_de_mercado": true
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 11:31:33 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117665528575591688    View image   Quoted  Donald J. Trump       View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43712",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 11:31:20 +0000",
-   "texto": "View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43713",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 05:08:30 +0000",
-   "texto": "RT: https://truthsocial.com/users/realDonaldTrump/statuses/117664020137490731    View image   Quoted  Donald J. Trump       View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43711",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 05:07:43 +0000",
-   "texto": "View video",
-   "enlace": "https://www.trumpstruth.org/statuses/43710",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Mon, 23 Nov 2026 02:54:45 +0000",
-   "texto": "I hope the Board of Nvidia rehires Jensen Huang. It would be the best thing for the Company, and also, for the U.S.A. President DONALD J. TRUMP",
-   "enlace": "https://www.trumpstruth.org/statuses/43709",
-   "habla_de_mercado": true
   }
  ],
  "nasdaq_futuro": {
-  "precio": 25618.5,
-  "cierre_anterior": 26275.75,
-  "cambio": -0.02501355812869277
+  "precio": 26289.75,
+  "cierre_anterior": 26100.25,
+  "cambio": 0.00726046685376569
  },
  "sp_futuro": {
-  "precio": 7121.0,
-  "cierre_anterior": 7217.5,
-  "cambio": -0.013370280568063775
+  "precio": 7245.0,
+  "cierre_anterior": 7195.75,
+  "cambio": 0.00684431782649475
  },
  "vix": {
-  "precio": 30.86,
-  "cierre_anterior": 26.360000610351562,
-  "cambio": 0.17071317471370961
+  "precio": 27.12,
+  "cierre_anterior": 28.290000915527344,
+  "cambio": -0.04135740111924746
  },
  "vix9d": {
-  "precio": 32.9,
-  "cierre_anterior": 26.68000030517578,
-  "cambio": 0.23313341917831876
+  "precio": 29.61,
+  "cierre_anterior": 29.610000610351562,
+  "cambio": -2.0613020956794514e-08
  },
  "dealers": {
-  "fecha": "2026-11-24",
-  "dix": 0.434,
-  "dix_pct": 0.2,
-  "gex": 1.15,
+  "fecha": "2026-11-25",
+  "dix": 0.4299,
+  "dix_pct": 0.16,
+  "gex": 0.92,
   "gex_pct": 0.08
  },
  "fondos": {
@@ -197,16 +175,16 @@
   "minutas_fed": false,
   "cpi": false,
   "empleo_nfp": false,
-  "pce": true,
+  "pce": false,
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": -0.02501355812869277,
-  "vix": 30.86,
-  "vix9d_vix": 1.012,
-  "dix_pct": 0.2,
+  "gap_nasdaq_futuro": 0.00726046685376569,
+  "vix": 27.12,
+  "vix9d_vix": 1.047,
+  "dix_pct": 0.16,
   "gex_pct": 0.08,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 4
+  "trump_posts_de_mercado": 3
  }
 }
