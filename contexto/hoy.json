@@ -1,21 +1,45 @@
 {
- "fecha": "2026-11-26",
- "generado_ny": "2026-11-26 12:40",
+ "fecha": "2026-11-27",
+ "generado_ny": "2026-11-27 09:45",
  "errores": {},
  "calendario": [],
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Semiconductor chips are the new oil. Here's why",
-  "Even the price of toys is on the rise. How Americans are scaling back holiday plans",
-  "Spain’s Pablo Hernández de Cos set to lead European Central Bank",
-  "Microdrama apps chase profits as Hollywood moves into short-form, vertical video",
-  "SpaceX, Musk pledge to donate a share each to active Trump Accounts",
-  "Global stocks rally as investors shrug off U.S. tariffs and AI jitters to 'fish for bargains'",
-  "Trump, NATO chief caution Russia as attacks on Ukraine’s energy infrastructure intensify",
-  "What is ‘texture-maxxing’? The food trend putting crunch on the menu"
+  "Trump demands probe into ‘record setting error’ after third-quarter GDP data gets massive revision higher",
+  "The S&P 500 is in a correction. Bear markets and recessions don't always follow",
+  "Budget airline Norse Atlantic files for bankruptcy in Europe after failing to secure funding",
+  "SpaceX shares jump 4% amid tech rally and after Musk says he will expand on Trump Account share donations",
+  "EU leaders fail to break $1.7 trillion budget deadlock as political pressure mounts",
+  "New car prices are at a record high. Here's where to look for deals",
+  "Liesman: Why Greenspan could bet on productivity — and Warsh needs to hike",
+  "Even the price of toys is on the rise. How Americans are scaling back holiday plans"
  ],
  "trump": [
+  {
+   "hora": "Fri, 27 Nov 2026 10:23:58 +0000",
+   "texto": "We support Iraqi Prime Minister Ali al-Zaidi’s efforts to assert state authority throughout Iraq, stop the smuggling of Iraqi oil, end corruption, and bring all weapons under the exclusive control of the state.  We support Prime Minister al-Zaidi’s efforts to build a united, prosperous, and strong Iraq that makes its own political decisions.",
+   "enlace": "https://www.trumpstruth.org/statuses/43750",
+   "habla_de_mercado": true
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 21:29:15 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43749",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 18:58:31 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43748",
+   "habla_de_mercado": false
+  },
+  {
+   "hora": "Thu, 26 Nov 2026 18:37:16 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43747",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Thu, 26 Nov 2026 15:45:00 +0000",
    "texto": "HAPPY THANKSGIVING TO ALL AMERICAN PATRIOTS WHO HAVE WORKED SO HARD TO MAKE OUR COUNTRY GREAT! Additionally, I would like to wish a Happy Thanksgiving to even those who issued fake Economic Numbers, just prior to the Election, and corrected them yesterday, three weeks late, showing that the GDP was actually 4.3%, versus 3.4%, A RECORD SETTING ERROR, and one so grave that it should be immediately i",
@@ -111,46 +135,22 @@
    "texto": "Early reports from Iowa are that the Army’s mitigation efforts have far exceeded expectations.",
    "enlace": "https://www.trumpstruth.org/statuses/43728",
    "habla_de_mercado": false
-  },
-  {
-   "hora": "Wed, 25 Nov 2026 01:02:33 +0000",
-   "texto": "https://  vimeo.com/1249782646/7e27022b5  4",
-   "enlace": "https://www.trumpstruth.org/statuses/43727",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Wed, 25 Nov 2026 00:58:03 +0000",
-   "texto": "View image",
-   "enlace": "https://www.trumpstruth.org/statuses/43723",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Wed, 25 Nov 2026 00:57:43 +0000",
-   "texto": "RT   @ Schoenlaw   Regarding Newsom’s wholesale commutations and an avenue for challenging at least some of them based on the California Constitution.   https://www.  dropbox.com/scl/fi/92yu855x4cf  bdb9ki6ajx/2-SCHOEN.mp4?rlkey=jsw56tbxxhutu1cbo9jzxp4fm&amp;st=kqcljs98&amp;dl=0    Reposted  Schoenlaw    Regarding Newsom’s wholesale commutations and an avenue for challenging at least some of them ",
-   "enlace": "https://www.trumpstruth.org/statuses/43724",
-   "habla_de_mercado": false
-  },
-  {
-   "hora": "Wed, 25 Nov 2026 00:57:33 +0000",
-   "texto": "Ilhan Omar’s legal reckoning is looming, and redactions can't hide it:   https://www.  foxnews.com/opinion/ilhan-omar  s-legal-reckoning-looming-redactions-cant-hide",
-   "enlace": "https://www.trumpstruth.org/statuses/43726",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26230.5,
+  "precio": 26370.0,
   "cierre_anterior": 26100.25,
-  "cambio": 0.004990373655424651
+  "cambio": 0.010335150046455466
  },
  "sp_futuro": {
-  "precio": 7235.5,
+  "precio": 7256.25,
   "cierre_anterior": 7195.75,
-  "cambio": 0.0055240940833130026
+  "cambio": 0.008407740680262732
  },
  "vix": {
-  "precio": 26.8,
-  "cierre_anterior": 28.290000915527344,
-  "cambio": -0.05266881821518554
+  "precio": 25.99,
+  "cierre_anterior": 26.799999237060547,
+  "cambio": -0.030223852989534228
  },
  "vix9d": {
   "precio": 29.61,
@@ -179,12 +179,12 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.004990373655424651,
-  "vix": 26.8,
-  "vix9d_vix": 1.047,
+  "gap_nasdaq_futuro": 0.010335150046455466,
+  "vix": 25.99,
+  "vix9d_vix": 1.105,
   "dix_pct": 0.16,
   "gex_pct": 0.08,
   "fondos_semana": "recortaron fuerte",
-  "trump_posts_de_mercado": 4
+  "trump_posts_de_mercado": 5
  }
 }
