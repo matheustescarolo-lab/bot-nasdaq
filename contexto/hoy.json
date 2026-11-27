@@ -1,21 +1,27 @@
 {
  "fecha": "2026-11-27",
- "generado_ny": "2026-11-27 09:45",
+ "generado_ny": "2026-11-27 12:55",
  "errores": {},
  "calendario": [],
  "reportes_ayer": [],
  "reportes_hoy": [],
  "titulares": [
-  "Trump demands probe into ‘record setting error’ after third-quarter GDP data gets massive revision higher",
+  "Trump demands probe into 'record setting error' after third-quarter GDP data gets massive revision higher",
   "The S&P 500 is in a correction. Bear markets and recessions don't always follow",
+  "AI shopping agents are having a moment, but Amazon and a growing number of sites threaten to stunt their growth",
   "Budget airline Norse Atlantic files for bankruptcy in Europe after failing to secure funding",
-  "SpaceX shares jump 4% amid tech rally and after Musk says he will expand on Trump Account share donations",
+  "SpaceX shares jump over 3% amid tech rally and after Musk says he will expand on Trump Account share donations",
   "EU leaders fail to break $1.7 trillion budget deadlock as political pressure mounts",
-  "New car prices are at a record high. Here's where to look for deals",
   "Liesman: Why Greenspan could bet on productivity — and Warsh needs to hike",
   "Even the price of toys is on the rise. How Americans are scaling back holiday plans"
  ],
  "trump": [
+  {
+   "hora": "Fri, 27 Nov 2026 14:50:18 +0000",
+   "texto": "View image",
+   "enlace": "https://www.trumpstruth.org/statuses/43751",
+   "habla_de_mercado": false
+  },
   {
    "hora": "Fri, 27 Nov 2026 10:23:58 +0000",
    "texto": "We support Iraqi Prime Minister Ali al-Zaidi’s efforts to assert state authority throughout Iraq, stop the smuggling of Iraqi oil, end corruption, and bring all weapons under the exclusive control of the state.  We support Prime Minister al-Zaidi’s efforts to build a united, prosperous, and strong Iraq that makes its own political decisions.",
@@ -129,33 +135,27 @@
    "texto": "Stocks are down sharply because of the November Third Election results. I wasn’t on the Ballot, but if I was, the results, just like all three times before, would have been much different, and the Stock Market, and your 401-k’s, would be BOOMING. I told you so!!! President DJT",
    "enlace": "https://www.trumpstruth.org/statuses/43729",
    "habla_de_mercado": true
-  },
-  {
-   "hora": "Wed, 25 Nov 2026 15:20:42 +0000",
-   "texto": "Early reports from Iowa are that the Army’s mitigation efforts have far exceeded expectations.",
-   "enlace": "https://www.trumpstruth.org/statuses/43728",
-   "habla_de_mercado": false
   }
  ],
  "nasdaq_futuro": {
-  "precio": 26370.0,
+  "precio": 26606.75,
   "cierre_anterior": 26100.25,
-  "cambio": 0.010335150046455466
+  "cambio": 0.01940594438750587
  },
  "sp_futuro": {
-  "precio": 7256.25,
+  "precio": 7288.5,
   "cierre_anterior": 7195.75,
-  "cambio": 0.008407740680262732
+  "cambio": 0.012889552861063747
  },
  "vix": {
-  "precio": 25.99,
+  "precio": 24.7,
   "cierre_anterior": 26.799999237060547,
-  "cambio": -0.030223852989534228
+  "cambio": -0.07835818271802597
  },
  "vix9d": {
-  "precio": 29.61,
+  "precio": 25.36,
   "cierre_anterior": 29.610000610351562,
-  "cambio": -2.0613020956794514e-08
+  "cambio": -0.14353260799548162
  },
  "dealers": {
   "fecha": "2026-11-25",
@@ -179,8 +179,8 @@
   "gigantes_reportaron_ayer_tras_cierre": [],
   "gigantes_reportan_hoy_antes": [],
   "gigantes_reportan_hoy_tras_cierre": [],
-  "gap_nasdaq_futuro": 0.010335150046455466,
-  "vix": 25.99,
+  "gap_nasdaq_futuro": 0.01940594438750587,
+  "vix": 24.7,
   "vix9d_vix": 1.105,
   "dix_pct": 0.16,
   "gex_pct": 0.08,
