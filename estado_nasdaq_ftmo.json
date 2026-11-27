@@ -10,15 +10,13 @@
   "etapa": "reto"
  },
  "dia": {
-  "fecha": "2026-11-25",
-  "eq_inicio": 97817.5,
-  "min_eq": 95960.8,
+  "fecha": "2026-11-27",
+  "eq_inicio": 95975.8,
+  "min_eq": 95975.8,
   "cerrado": false,
   "quemado": false,
-  "meta": 12232.5,
-  "piso": 92817.5,
-  "obj": 110000.0,
-  "salidas_srv": [],
-  "resumido": "2026-11-25"
+  "meta": 14074.199999999997,
+  "piso": 90975.8,
+  "obj": 110000.0
  }
 }
