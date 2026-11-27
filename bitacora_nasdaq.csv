@@ -92,3 +92,10 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-27 14:47:59,contexto,,,,,sin eventos · reportaron ayer: [] · hoy: [] / [] · VIX 25.99
 2026-11-27 14:47:59,filtro,,,,,medio día de bolsa (cierra 13:00): no opera; la simulación de 8 años no incluye medios días
 2026-11-27 17:55:03,resumen,,,,,"📊 Update del bot Nasdaq (reglas FTMO) — 27-11-2026 | 💰 Cuenta: $51,289.46 | • Rango 30 min: sin operaciones | • Zona de ruido: sin operaciones | 🧮 Total del día: +0.00 USD (base 6 MNQ por estrategia, ajustado por volatilidad) | 🎯 Reto FTMO fase 1 · día 3 · lleva +2,798 de +10,000 · margen mañana $5,000 | 🪩 Sombra FTMO 50K (0.5×) fase 1 · día 3 · hoy +0 · lleva +1,399 de +5,000 · margen mañana $2,500 | ✅ Sin errores"
+2026-11-27 17:58:26,sombra,,,,,"VIX 9 días / VIX 30 días = 1.105 > 1.1: sería ×0.5; en sombra, no cambia el tamaño"
+2026-11-27 17:58:26,sombra,,,,,"fondos apalancados recortaron fuerte (COT): sería ×0.5; en sombra, no cambia el tamaño"
+2026-11-27 17:58:26,sombra,,,,,"ayer cerró en el 96% de su rango: zona de ruido sería ×1.5; en sombra, no cambia el tamaño"
+2026-11-27 17:58:26,tamaño,,,,,volatilidad 14 días 2.82% vs normal 1.46% → peso 0.52 · hoy: rango 30 min 3 MNQ (6 lotes) · zona de ruido 3 MNQ (6 lotes)
+2026-11-27 17:58:26,inicio,,,,,"tramo de la tarde · USTEC · 6 lotes por estrategia (≈3 MNQ) · equity 51,289.46 · FTMO fase 1 · meta del día +7,252 · freno en equity 46,689 · cuenta demo · trabaja hasta las 12:58 NY"
+2026-11-27 17:58:26,contexto,,,,,sin eventos · reportaron ayer: [] · hoy: [] / [] · VIX 24.7
+2026-11-27 17:58:26,filtro,,,,,medio día de bolsa (cierra 13:00): no opera; la simulación de 8 años no incluye medios días
