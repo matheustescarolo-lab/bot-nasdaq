@@ -68,7 +68,9 @@
    "meta": 3625.8199999999997,
    "piso": 48899.18,
    "obj": 55000.0
-  }
+  },
+  "salidas_srv": [],
+  "resumido": "2026-11-27"
  },
  "ftmo_50k": {
   "fase": 1,
@@ -78,7 +80,7 @@
   "cierre_prev": 51399.18,
   "dias": 3,
   "listo": false,
-  "ultimo": "2026-11-25"
+  "ultimo": "2026-11-27"
  },
  "historial_ftmo_50k": []
 }
