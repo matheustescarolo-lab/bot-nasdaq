@@ -28,3 +28,4 @@ hora_UTC,evento,estrategia,lado,lotes,precio,detalle
 2026-11-27 14:47:11,inicio,,,,,"tramo de la mañana · US100.cash · 6 lotes por estrategia (≈3 MNQ) · equity 95,975.80 · FTMO fase 1 · meta del día +14,074 · freno en equity 91,376 · cuenta demo · trabaja hasta las 12:58 NY"
 2026-11-27 14:47:11,contexto,,,,,sin eventos · reportaron ayer: [] · hoy: [] / [] · VIX 25.99
 2026-11-27 14:47:11,filtro,,,,,medio día de bolsa (cierra 13:00): no opera; la simulación de 8 años no incluye medios días
+2026-11-27 17:55:06,resumen,,,,,"📊 Update del bot Nasdaq FTMO — 27-11-2026 | 💰 Cuenta: $95,975.80 | • Rango 30 min: sin operaciones | • Zona de ruido: sin operaciones | 🧮 Total del día: +0.00 USD (base 6 MNQ por estrategia, ajustado por volatilidad) | 🎯 Reto FTMO fase 1 · día 1 · lleva -4,024 de +10,000 · margen mañana $5,000 | ✅ Sin errores"
